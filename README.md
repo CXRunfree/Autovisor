@@ -21,11 +21,11 @@
 ​	 2.前两项请输入你的**用户名,密码**,第三项请输入网课的**具体网址**,保存后关闭,例如:
 
 ```
-https://studyvideoh5.zhihuishu.com/stuStudy?recruitAndCourseId=
+https://studyvideoh5.zhihuishu.com/stuStudy?recruitAndCourseId=...
 ```
 
 ​	 3.运行程序,会自动打开浏览器界面(不要关掉),在登录界面出现滑块验证时,
-​	  请手动拖动滑块验证。进入网课界面后就可以自动刷课啦~ (~^-^~)
+​	  请手动拖动滑块验证。进入网课界面后就可以自动刷课啦~ (~ ^-^ ~)
 
 **FAQ (O.o?) :** 
 
