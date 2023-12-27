@@ -25,7 +25,8 @@
 
 ​	 2.前两项请输入你的**用户名，密码**；第三项指定启动的**浏览器**（保持默认即可）；第四项输入网课的**具体网址**，保存后关闭，例如:
 
-![image-20231228004330412](C:\Users\CXRunfree\AppData\Roaming\Typora\typora-user-images\image-20231228004330412.png)
+![image](https://github.com/CXRunfree/Autovisor/assets/79365257/4e367835-3aaf-4d7b-8231-721695d17f83)
+
 
 ​	 3.运行程序,会自动打开浏览器界面(不要关掉)，在登录界面出现滑块验证时,
 ​	  请手动**拖动滑块验证**。进入网课界面后就可以自动刷课啦~ (~ ^-^ ~)
