@@ -133,6 +133,8 @@ try:
         EC.invisibility_of_element((By.CLASS_NAME, "wall-main")))
     # 遍历所有课程,加载网页
     for course_url in account["Url"]:
+        if course_url.strip()[:4] != "http":
+            continue
         print("加载播放页...")
         driver.get(course_url)
         # 等待开屏弹窗出现
