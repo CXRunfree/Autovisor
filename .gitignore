@@ -3,10 +3,9 @@ Autovisor.zip
 log.txt
 test.py
 LICENSE
-Autovisor.spec
 stealth.min.js
-<<<<<<< HEAD
+Autovisor.spec
+Res/stealth.min.js
+Releases/
 build/
 dist/
-=======
->>>>>>> 48a5eb43917d38020338bd59926d4d6490dbe76f

@@ -1,8 +1,9 @@
 {
-    "User": "  ",
-    "Password": "  ",
+    "User": " ",
+    "Password": " ",
     "Driver": " Edge ",
-    "Url": [" https://studyvideoh5.zhihuishu.com/stuStudy?recruitAndCourseId=class1 ",
-            " 可以输入多个网址, 以英文逗号分隔 "
+    "Url": ["https://studyvideoh5.zhihuishu.com/stuStudy?recruitAndCourseId=... ",
+            "以上是一个示范,可以继续增加网址,以英文逗号隔开 " 
             ]
+    
 }

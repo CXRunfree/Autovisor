@@ -1,7 +1,9 @@
+import traceback
+import requests
 import json
 import os
 import time
-import traceback
+import Res as verify
 from json import JSONDecodeError
 
 from selenium import webdriver
@@ -31,6 +33,24 @@ def driver_init(driver_type):
         _driver = None
     return _driver
 
+
+def auto_verify():
+    # 等待图片加载
+    WebDriverWait(driver, 80).until(
+        EC.presence_of_element_located((By.CLASS_NAME, "yidun_bg-img")))
+    time.sleep(1)
+    # 获取图片链接
+    url1 = driver.execute_script(block_js)
+    url2 = driver.execute_script(bg_js)
+    # 获取图片二进制数据
+    block_bytes = requests.get(url1).content
+    background_bytes = requests.get(url2).content
+    # 匹配图形位置,手动修订误差
+    x_offset = verify.slide_match(block_bytes, background_bytes)["target"][0] + 7
+    # 定位要拖动的元素
+    draggable_element = driver.find_element(By.XPATH, drag_bar)
+    # 拖动元素到指定的偏移位置
+    ActionChains(driver).drag_and_drop_by_offset(draggable_element, x_offset, 0).perform()
 
 def get_progress():
     curt = "进度获取中..."
@@ -75,7 +95,7 @@ def skip_question():
     driver.find_element(By.XPATH, x).click()
 
 
-# 初始化配置
+# 初始化配置>>>>>>>>>>>>>>>>>>>>
 print("载入数据...")
 # 读取用户信息
 try:
@@ -91,10 +111,12 @@ if not driver:
     print("暂不支持该浏览器,请检查配置!")
     exit(-1)
 
+
 # 隐藏浏览器指纹
-with open("./stealth.min.js", "r") as f:
+with open("Res/stealth.min.js", "r") as f:
     js = f.read()
 driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": js})
+# >>>>>>>>>>>>>>>>>>>>>>>>
 
 # constants
 login_url = "https://passport.zhihuishu.com/login"
@@ -103,20 +125,25 @@ user = account['User'].strip()
 pwd = account['Password'].strip()
 
 # ElementXpath
+drag_bar = "/html/body/div[31]/div[2]/div/div/div[2]/div/div[2]/div[2]"
 option1 = '//*[@id="playTopic-dialog"]/div/div[2]/div/div[1]/div/div/div[2]/ul/li[1]/div[2]'
 option2 = '//*[@id="playTopic-dialog"]/div/div[2]/div/div[1]/div/div/div[2]/ul/li[2]/div[2]'
 x = '/html/body/div[1]/div/div[2]/div[1]/div[2]/div[1]/div/div[3]/span/div'
 
 # javascript
+# 登录
 user_js = f'''document.getElementById("lUsername").value="{user}";'''
 pwd_js = f'''document.getElementById("lPassword").value="{pwd}";'''
 login_js = '''document.getElementsByClassName("wall-sub-btn")[0].click();'''
+block_js = '''return document.getElementsByClassName("yidun_jigsaw")[0].src'''
+bg_js = '''return document.getElementsByClassName("yidun_bg-img")[0].src'''
+# 弹窗
 pop_late = '''document.getElementsByClassName("el-dialog__close el-icon el-icon-close")[2].click()'''
 pop_js = '''document.getElementsByClassName("iconfont iconguanbi")[0].click();'''
 pop2_js = '''document.evaluate('//*[@id="app"]/div/div[1]/div[1]/span/a',document).iterateNext().click();'''
+# 其他
 night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
 show_controlsBar = '''document.getElementsByClassName("controlsBar")[0].setAttribute("style","z-index: 2; overflow: inherit;")'''
-
 
 try:
     print("正在登录...")
@@ -128,7 +155,9 @@ try:
     driver.execute_script(pwd_js)
     time.sleep(0.5)
     driver.execute_script(login_js)
-    # 等待用户完成滑块验证,已设置80s等待时间
+    # 自动图片验证
+    auto_verify()
+    # 等待完成滑块验证,已设置80s等待时间
     WebDriverWait(driver, 80).until(
         EC.invisibility_of_element((By.CLASS_NAME, "wall-main")))
     # 遍历所有课程,加载网页
@@ -147,7 +176,7 @@ try:
             # 关闭上方横幅
             driver.execute_script(pop2_js)
         except JavascriptException:
-            pass   # 不是每次都有此类弹窗
+            pass  # 不是每次都有此类弹窗
         # 关闭学习须知
         driver.execute_script(pop_js)
         # 根据当前时间切换夜间模式
@@ -170,7 +199,7 @@ try:
                     # 跳过中途弹题(只支持选择题)
                     skip_question()
                 except TimeoutException:
-                    pass   # 并非每时都要跳过答题
+                    pass  # 并非每时都要跳过答题
                 curtime2 = get_progress()
                 if curtime2 != curtime:  # 进度条若相同则说明视频已暂停
                     curtime = curtime2
@@ -183,7 +212,7 @@ try:
             # 进度100%时开始下一集
             try:
                 play_next()
-            except Exception:    # 捕获有时点击失败的情况
+            except Exception:  # 捕获有时点击失败的情况
                 continue
             # 延时获取新数据
             time.sleep(1.5)
@@ -193,7 +222,7 @@ try:
                 print(f"\"{title}\" Done !")
             else:
                 print("已学完本课程全部内容!")
-                print(">>"*10)
+                print(">>" * 10)
                 break
         time.sleep(1)
 # 特殊异常捕获
