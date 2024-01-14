@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # coding=utf-8
 import io
 from PIL import Image
@@ -68,7 +67,6 @@ def slide_match(target_bytes: bytes = None, background_bytes: bytes = None, simp
     bottom_right = (max_loc[0] + w, max_loc[1] + h)
     return {"target_y": target_y,
             "target": [int(max_loc[0]), int(max_loc[1]), int(bottom_right[0]), int(bottom_right[1])]}
-=======
 # coding=utf-8
 import io
 from PIL import Image
@@ -138,4 +136,3 @@ def slide_match(target_bytes: bytes = None, background_bytes: bytes = None, simp
     bottom_right = (max_loc[0] + w, max_loc[1] + h)
     return {"target_y": target_y,
             "target": [int(max_loc[0]), int(max_loc[1]), int(bottom_right[0]), int(bottom_right[1])]}
->>>>>>> cdf16cf0c4f21ca8ce2e01a7d7921bd8913ee3c6
