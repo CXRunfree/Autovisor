@@ -67,4 +67,3 @@ def slide_match(target_bytes: bytes = None, background_bytes: bytes = None, simp
     bottom_right = (max_loc[0] + w, max_loc[1] + h)
     return {"target_y": target_y,
             "target": [int(max_loc[0]), int(max_loc[1]), int(bottom_right[0]), int(bottom_right[1])]}
-
