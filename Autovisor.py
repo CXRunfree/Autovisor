@@ -151,6 +151,7 @@ try:
     if not user or not pwd:
         raise UserWarning
     driver.get(login_url)
+    input()
     driver.execute_script(user_js)
     driver.execute_script(pwd_js)
     time.sleep(0.5)
