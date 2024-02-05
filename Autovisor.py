@@ -1,9 +1,7 @@
 import traceback
-import requests
 import json
 import os
 import time
-import Res as verify
 from json import JSONDecodeError
 
 from selenium import webdriver
@@ -34,6 +32,8 @@ def driver_init(driver_type):
     return _driver
 
 
+# 图片验证功能已弃用
+'''
 def auto_verify():
     # 等待图片加载
     WebDriverWait(driver, 80).until(
@@ -51,6 +51,8 @@ def auto_verify():
     draggable_element = driver.find_element(By.XPATH, drag_bar)
     # 拖动元素到指定的偏移位置
     ActionChains(driver).drag_and_drop_by_offset(draggable_element, x_offset, 0).perform()
+'''
+
 
 def get_progress():
     curt = "进度获取中..."
@@ -151,13 +153,10 @@ try:
     if not user or not pwd:
         raise UserWarning
     driver.get(login_url)
-    input()
     driver.execute_script(user_js)
     driver.execute_script(pwd_js)
     time.sleep(0.5)
     driver.execute_script(login_js)
-    # 自动图片验证
-    auto_verify()
     # 等待完成滑块验证,已设置80s等待时间
     WebDriverWait(driver, 80).until(
         EC.invisibility_of_element((By.CLASS_NAME, "wall-main")))
