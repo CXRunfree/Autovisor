@@ -41,6 +41,8 @@
 ​			  ---这里是源代码,如果希望直接使用请下载Releases版本
 
 ​	1.为什么会出现一个黑框?  
+![image](https://github.com/CXRunfree/Autovisor/assets/79365257/7e5356ce-8987-40da-bc31-c81cc54b3ad2)
+
 
 ​			   ---这是程序运行的后台，你可以查看当前运行的状态
 
