@@ -54,6 +54,8 @@
 
 - 由于习惯分机制对倍速检测严格, 程序不提供自动调节倍速功能
 
+如有疑问,可以提issue或者在公众号发私信给作者 (!^-^/)
+
 
 **碎碎念:**
 
@@ -62,7 +64,7 @@
    <img src="https://github.com/CXRunfree/Autovisor/assets/79365257/3f72abfe-ce8f-4181-91fb-f321418ff60e" width="310px">
 
 
-如有疑问,可以提issue或者在公众号发私信给作者 (!^-^/)
+
 
 CSDN:Runfreeone  微信公众号: "编程玩家"  微信号: cx-codeplayer
 
