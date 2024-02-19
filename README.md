@@ -70,6 +70,6 @@
 
 
 
-CSDN:Runfreeone  微信公众号: "编程玩家"  微信号: cx-codeplayer
+CSDN:Runfreeone
 
 **注意：本程序遵守BSD许可证，建议仅用于学习和研究计算机原理。**
