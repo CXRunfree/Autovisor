@@ -32,28 +32,6 @@ def driver_init(driver_type):
     return _driver
 
 
-# 图片验证功能已弃用
-'''
-def auto_verify():
-    # 等待图片加载
-    WebDriverWait(driver, 80).until(
-        EC.presence_of_element_located((By.CLASS_NAME, "yidun_bg-img")))
-    time.sleep(1)
-    # 获取图片链接
-    url1 = driver.execute_script(block_js)
-    url2 = driver.execute_script(bg_js)
-    # 获取图片二进制数据
-    block_bytes = requests.get(url1).content
-    background_bytes = requests.get(url2).content
-    # 匹配图形位置,手动修订误差
-    x_offset = verify.slide_match(block_bytes, background_bytes)["target"][0] + 7
-    # 定位要拖动的元素
-    draggable_element = driver.find_element(By.XPATH, drag_bar)
-    # 拖动元素到指定的偏移位置
-    ActionChains(driver).drag_and_drop_by_offset(draggable_element, x_offset, 0).perform()
-'''
-
-
 def get_progress():
     curt = "进度获取中..."
     text = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, "passTime")))
@@ -118,7 +96,7 @@ if not driver:
 with open("Res/stealth.min.js", "r") as f:
     js = f.read()
 driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": js})
-# >>>>>>>>>>>>>>>>>>>>>>>>
+
 
 # constants
 login_url = "https://passport.zhihuishu.com/login"
