@@ -1,6 +1,5 @@
 import traceback
 import json
-import os
 import time
 from json import JSONDecodeError
 
@@ -135,8 +134,8 @@ try:
     driver.execute_script(pwd_js)
     time.sleep(0.5)
     driver.execute_script(login_js)
-    # 等待完成滑块验证,已设置80s等待时间
-    WebDriverWait(driver, 80).until(
+    # 等待完成滑块验证,已设置5min等待时间
+    WebDriverWait(driver, 300).until(
         EC.invisibility_of_element((By.CLASS_NAME, "wall-main")))
     # 遍历所有课程,加载网页
     for course_url in account["Url"]:
@@ -145,7 +144,7 @@ try:
         print("加载播放页...")
         driver.get(course_url)
         # 等待开屏弹窗出现
-        WebDriverWait(driver, 80).until(
+        WebDriverWait(driver, 300).until(
             EC.presence_of_element_located((By.CLASS_NAME, "studytime-div")))
         time.sleep(0.5)
         try:
@@ -221,4 +220,4 @@ except Exception as e:
 driver.quit()
 if lesson_finish:
     print("所有课程学习完毕!")
-    os.system("pause")
+input()
