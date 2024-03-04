@@ -33,7 +33,7 @@ def driver_init(driver_type):
 
 def get_progress():
     curt = "进度获取中..."
-    text = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, "passTime")))
+    text = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "passTime")))
     try:
         # 最多保留2位小数;不足则输出原形
         s = text.get_attribute('style').split(": ")[1][:-1]
@@ -53,22 +53,22 @@ def check_play():
 
 def shut_volume():
     driver.execute_script(show_controlsBar)
-    WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CLASS_NAME, "volumeBox"))).click()
+    WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "volumeBox"))).click()
 
 
 def play_next():
     driver.execute_script(show_controlsBar)
-    next_but = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, "nextBtn")))
+    next_but = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "nextBtn")))
     next_but.click()
 
 
 def get_lesson_name():
-    title_ = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, "lessonOrder"))).get_attribute("title")
+    title_ = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "lessonOrder"))).get_attribute("title")
     return title_
 
 
 def skip_question():
-    WebDriverWait(driver, 1.5).until(EC.element_to_be_clickable((By.XPATH, option2))).click()
+    WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH, option2))).click()
     driver.find_element(By.XPATH, option1).click()
     time.sleep(0.5)
     driver.find_element(By.XPATH, x).click()
