@@ -49,7 +49,7 @@ def optimize_page():
         driver.execute_script(pop2_js)
     except JavascriptException:
         pass  # 不是每次都有此类弹窗
-    # 关闭学习须知
+    #  关闭学习须知
     driver.execute_script(pop_js)
     # 根据当前时间切换夜间模式
     hour = time.localtime().tm_hour
