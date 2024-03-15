@@ -2,9 +2,9 @@
     "User": " ",
     "Password": " ",
     "Driver": " Edge ",
-    "Url": ["https://studyvideoh5.zhihuishu.com/stuStudy?recruitAndCourseId=... ",
-            "https://studyvideoh5.zhihuishu.com/stuStudy?recruitAndCourseId=...",
-            "以上是示范,可以继续增加网址,以英文逗号隔开 " 
+    "Url": [
+            "https://studyvideoh5.zhihuishu.com/stuStudy?recruitAndCourseId=... ",
+            "https://studyvideoh5.zhihuishu.com/stuStudy?recruitAndCourseId=... "
             ]
     
 }

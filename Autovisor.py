@@ -1,4 +1,7 @@
 # encoding=utf-8
+import asyncio
+import os
+import re
 import traceback
 import json
 import time
@@ -44,7 +47,7 @@ def init_page():
     context = browser.new_context()
     page = context.new_page()
     # 设置程序超时时限
-    page.set_default_timeout(300 * 1000)
+    page.set_default_timeout(300 * 1000 * 1000)
     # 设置浏览器视口大小
     viewsize = page.evaluate('''() => {
                        return {width: window.screen.availWidth,height: window.screen.availHeight};}''')
@@ -86,20 +89,17 @@ def move_mouse(elem):
 
 
 def get_progress():
-    curt = "进度获取中..."
+    curt = "0%"
     canvas = page.wait_for_selector(".videoArea")
     move_mouse(canvas)
-    text = page.query_selector(".passTime")
-    try:
-        # 最多保留2位小数;不足则输出原形
-        s = text.get_attribute('style').split(": ")[1][:-1]
-        if len(s) > 5:
-            s = s.split(".")
-            curt = f"{s[0]}.{s[1][:2]}%"
-        else:
-            curt = s
-    finally:
-        return curt
+    progress = page.query_selector(".current_play").query_selector(".progress-num")
+    if not progress:
+        finish = page.query_selector(".current_play").query_selector(".time_icofinish")
+        if finish:
+            curt = "100%"
+    else:
+        curt = progress.text_content()
+    return curt
 
 
 def check_play():
@@ -108,10 +108,18 @@ def check_play():
     canvas.click()
 
 
-def shut_volume():
+def video_optimize():
     canvas = page.wait_for_selector(".videoArea")
     move_mouse(canvas)
-    page.wait_for_selector(".volumeBox").click()
+    page.wait_for_selector(".volumeBox").click()  # 设置静音
+    page.wait_for_selector(".definiBox").hover()  # 切换流畅画质
+    low_quality = page.query_selector(".line1bq")
+    low_quality.hover()
+    low_quality.click()
+    page.wait_for_selector(".speedBox").hover()  # 切换1.5倍速
+    max_speed = page.query_selector(".speedTab15")
+    max_speed.hover()
+    max_speed.click()
 
 
 def play_next():
@@ -134,16 +142,7 @@ def skip_question():
         return
 
 
-def detect_auth():
-    try:
-        page.wait_for_selector(".yidun_modal__title", timeout=1000)
-        hasAuth = True
-    except TimeoutError:
-        hasAuth = False
-    return hasAuth
-
-
-def main_func():
+def main_function():
     # 进行登录
     print("等待登录完成...")
     auto_login(user, pwd)
@@ -151,9 +150,12 @@ def main_func():
     page.wait_for_selector(".wall-main", state="hidden")
     # 遍历所有课程,加载网页
     for course_url in urls:
-        if "CourseId" not in course_url.strip():
+        id_pat = re.compile("recruitAndCourseId=[a-zA-Z0-9]+")
+        matched = re.findall(id_pat, course_url)
+        if not matched:
+            print(f"\"{course_url.strip()}\"\n不是一个有效网址,即将自动跳过!")
             continue
-        print("加载播放页...")
+        print("开始加载播放页...")
         page.goto(course_url)
         page.wait_for_selector(".studytime-div")
         # 关闭弹窗,优化页面体验
@@ -169,47 +171,45 @@ def main_func():
             # 根据进度条判断播放状态
             curtime = get_progress()
             check_play()  # 开始播放
-            shut_volume()  # 设置为静音
+            video_optimize()  # 对播放页进行初始化配置
             page.set_default_timeout(2000)
             while curtime != "100%":
                 try:
                     skip_question()  # 跳过中途弹题(只支持选择题)
-                    curtime2 = get_progress()
-                    if curtime2 != curtime:  # 进度条若相同则说明视频已暂停
-                        curtime = curtime2
-                        print('完成进度:%s' % curtime)
-                    else:
+                    playBut = page.query_selector_all(".pauseButton")
+                    curtime = get_progress()
+                    if not playBut and curtime != "100%":
                         check_play()
-                        print("检测到视频暂停,已自动继续..")
+                        print("当前小节未刷满,将继续播放..")
                         title = get_lesson_name()
                         print("正在学习:%s" % title)
+                    else:
+                        print('完成进度:%s' % curtime)
+                        page.wait_for_timeout(2000)
                 except TimeoutError:
-                    input("请完成安全验证,按Enter继续:")
-            try:
-                page.set_default_timeout(300 * 1000)
-                play_next()  # 进度100%时开始下一集
-                time_period = (time.time() - start_time) / 60
-                if time_period >= 1:  # 每完成一节提示一次时间
-                    print("本次课程已学习:%.1f min" % time_period)
-            except Exception:  # 捕获有时点击失败的情况
-                continue
-            # 延时获取新数据
-            page.wait_for_timeout(1500)
-            title2 = get_lesson_name()
-            # 点完下一集后若标题不改变,判定为课程结束
-            if title2 != title:
-                print(f"\"{title}\" Done !")
-            else:
+                    input("进度获取超时,可能存在安全验证?\n按Enter继续:")
+            page.set_default_timeout(300 * 1000 * 1000)
+            title = get_lesson_name()
+            play_next()  # 进度100%时开始下一集
+            time_period = (time.time() - start_time) / 60
+            if time_period >= 1:  # 每完成一节提示一次时间
+                print("本次课程已学习:%.1f min" % time_period)
+            # 如果当前小节是最后一节代表课程学习完毕
+            all_class = page.query_selector_all(".clearfix.video")
+            class_name = all_class[-1].get_attribute('class')
+            if "current_play" in class_name:
                 print("已学完本课程全部内容!")
                 print("==" * 10)
                 break
+            else:  # 否则为完成当前课程的一个小节
+                print(f"\"{title}\" Done !")
             page.wait_for_timeout(1000)
 
 
 if __name__ == "__main__":
     print("===== Runtime Log =====")
     try:
-        print("载入数据...")
+        print("正在载入数据...")
         with open("account.json", "r", encoding="utf-8") as f:
             account = json.loads(f.read())
         user = account["User"].strip()
@@ -221,8 +221,10 @@ if __name__ == "__main__":
             raise KeyError
         with sync_playwright() as p:
             page = init_page()
-            main_func()
+            main_function()
+            print("==" * 10)
             print("所有课程学习完毕!")
+            input()
     except Exception as e:
         if isinstance(e, JSONDecodeError):
             print("[Error]account文件内容有误!")
@@ -235,11 +237,11 @@ if __name__ == "__main__":
         elif isinstance(e, TargetClosedError):
             print("[Error]糟糕,网页关闭了!")
         elif isinstance(e, TimeoutError):
-            print("[Error]程序长时间无响应,自动退出...")
+            print("[Error]网页长时间无响应,自动退出...")
         else:
             print(f"[Error]{e}")
             with open("log.txt", "w", encoding="utf-8") as doc:
                 doc.write(traceback.format_exc())
             print("错误日志已保存至:log.txt")
             print("系统出错,要不重启一下?")
-    input()
+        input()
