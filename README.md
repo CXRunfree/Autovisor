@@ -102,6 +102,7 @@
 **碎碎念:**
 
    觉得体验还不错? 来给开源项目发电支持一下吧~!
+   (其实作者也要吃饭的！^-^)
 
    <img src="https://github.com/CXRunfree/Autovisor/assets/79365257/3f72abfe-ce8f-4181-91fb-f321418ff60e" width="310px">
 
