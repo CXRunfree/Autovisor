@@ -10,4 +10,4 @@ Releases/
 build/
 dist/
 Res/__init__.py
-.idea/
+.idea/*
