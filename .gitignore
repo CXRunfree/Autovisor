@@ -2,7 +2,6 @@ Autovisor.zip
 setup.py
 说明.txt
 log.txt
-Autovisor.py
 LICENSE
 stealth.min.js
 Autovisor.spec
@@ -11,3 +10,4 @@ Releases/
 build/
 dist/
 Res/__init__.py
+.idea/
