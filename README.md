@@ -49,7 +49,7 @@
 
 `username`：输入你的 **账户名**；
 
-`dassword`：输入你的 **密码**；
+`password`：输入你的 **密码**；
 
 `driver`：指定启动的 **浏览器**(可选Chrome)；
 
