@@ -57,7 +57,8 @@
 
 **注: 所有配置项都不加引号**
 
-<img src="https://github.com/CXRunfree/Autovisor/assets/79365257/36b71d57-8ceb-45f7-a22b-c6de83f4239f" alt="image-20240409110805139" style="zoom:50%;float:left" />
+<img width=600px src="https://github.com/CXRunfree/Autovisor/assets/79365257/246c1255-a8c9-4f92-88c9-a5c5ebb08951" style="float:left">
+
 
 4.运行`Autovisor.exe`，会自动打开浏览器，登录界面的滑块验证请**手动完成**，进入网课界面后就可以自动刷课了 ！
 
