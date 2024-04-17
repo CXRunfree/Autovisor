@@ -110,6 +110,10 @@ def skip_questions(page):
 
 
 def get_filtered_class(page):
+    try:
+        page.wait_for_selector(".time_icofinish",timeout=1000)
+    except TimeoutError:
+        pass
     all_class = page.locator(".clearfix.video").all()
     new_class = []
     for each in all_class:
@@ -128,8 +132,8 @@ def start_course_loop(page, course_url):
     course_title = page.wait_for_selector(".source-name").text_content()
     print(f"当前课程:<<{course_title}>>")
     page.wait_for_selector(".clearfix.video", state="attached")
-    start_time = time.time()  # 记录开始学习时间
     all_class = get_filtered_class(page)
+    start_time = time.time()  # 记录开始学习时间
     for each in all_class:
         page.wait_for_selector(".current_play", state="attached")
         each.click()
@@ -152,11 +156,10 @@ def start_course_loop(page, course_url):
                 page.wait_for_timeout(1000)
                 check_play(page)
                 curtime, total_time = get_progress(page)
-                time_period = (time.time() - start_time)
-                if 0 < max_time <= time_period:
+                time_period = (time.time() - start_time) / 60
+                if 0 < config.limitMaxTime <= time_period:
                     break
                 else:
-                    curtime = "%d" % (time_period*config.limitSpeed // total_time)
                     show_progress(desc="完成进度:", cur_str=curtime)
             except TimeoutError as e:
                 if page.query_selector(".yidun_modal__title"):
@@ -169,8 +172,8 @@ def start_course_loop(page, course_url):
         # 完成该小节后的操作
         page.set_default_timeout(90 * 60 * 1000)
         time_period = (time.time() - start_time) / 60
-        if 0 < max_time <= time_period:  # 若达到设定的时限将直接进入下一节
-            print(f"\n当前课程已达时限:{max_time}min\n即将进入下一节!")
+        if 0 < config.limitMaxTime <= time_period:  # 若达到设定的时限将直接进入下一节
+            print(f"\n当前课程已达时限:{config.limitMaxTime}min\n即将进入下一节!")
             break
         # 如果当前小节是最后一节代表课程学习完毕
         class_name = all_class[-1].get_attribute('class')
@@ -217,7 +220,6 @@ if __name__ == "__main__":
         user = config.username
         pwd = config.password
         driver = config.driver
-        max_time = config.limitMaxTime
         urls = config.course_urls
         if not isinstance(urls, list):
             print('[Error]"Url"项格式错误!')

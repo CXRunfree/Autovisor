@@ -38,12 +38,12 @@ class Config:
     @property
     def limitMaxTime(self):
         self._config.read(self.filename)
-        return int(self._config.get('custom-option', 'limitMaxTime'))
+        return float(self._config.get('custom-option', 'limitMaxTime'))
 
     @property
     def limitSpeed(self):
         self._config.read(self.filename)
-        return self._config.get('custom-option', 'limitSpeed', raw=True)
+        return float(self._config.get('custom-option', 'limitSpeed', raw=True))
 
     @property
     def revise_speed_name(self):
