@@ -17,7 +17,7 @@
 
 2.调整了课程链接的**填写方式**(更加人性化)
 
-详细配置方式请见下方的**"使用须知".**
+详细配置方式请见下方的 **"使用须知".**
 
 ------
 
@@ -56,7 +56,7 @@
 
 **注意：**所有配置项都不加双引号.
 
-<img src="https://img-blog.csdnimg.cn/direct/e25585268bd74322851f110532435dea.png" alt="img" style="zoom: 50%;" />![点击并拖拽以移动](data:image/gif;base64,R0lGODlhAQABAPABAP///wAAACH5BAEKAAAALAAAAAABAAEAAAICRAEAOw==)
+<img src="https://img-blog.csdnimg.cn/direct/e25585268bd74322851f110532435dea.png" alt="img" style="zoom: 50%;" />
 
 
 
@@ -83,12 +83,12 @@
 
 **`Url`**：输入网课的 **具体网址**，保存后关闭，例如下图所示.
 
-**注意:** 
+**注意:**
 
 - 此脚本仅支持**共享课**视频, **网址格式**与需下面一致, 填入时请看仔细。
 - 只能使用**英文标点**。
 
-<img src="https://img-blog.csdnimg.cn/direct/b6edaad9b62045e4b5364df24a374fef.png" alt="img" style="zoom: 50%;" />![点击并拖拽以移动](data:image/gif;base64,R0lGODlhAQABAPABAP///wAAACH5BAEKAAAALAAAAAABAAEAAAICRAEAOw==)
+<img src="https://img-blog.csdnimg.cn/direct/b6edaad9b62045e4b5364df24a374fef.png" alt="img" style="zoom: 50%;" />
 
 4.运行`Autovisor.exe`，会自动打开浏览器，登录界面的滑块验证请**手动完成**，进入网课界面后就可以自动刷课了 ！
 
@@ -131,7 +131,7 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 
 (其实作者也要吃饭的 ^-^)
 
-<img src="https://img-blog.csdnimg.cn/direct/2d94a77c4bf643c1bff1712461c4f1bf.png" alt="img" style="zoom: 50%;" />![点击并拖拽以移动](data:image/gif;base64,R0lGODlhAQABAPABAP///wAAACH5BAEKAAAALAAAAAABAAEAAAICRAEAOw==)
+<img src="https://img-blog.csdnimg.cn/direct/2d94a77c4bf643c1bff1712461c4f1bf.png" alt="img" style="zoom: 50%;" />
 
 **作者的CSDN:** [Runfreeone 欢迎关注~](https://blog.csdn.net/Runfreeone)
 
