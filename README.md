@@ -4,7 +4,7 @@
 
 **新学期必备干货, 建议收藏备用 !!**
 
-**项目主页：**[CXRunfree/Autovisor(记得点直接访问)](https://github.com/CXRunfree/Autovisor)
+**项目主页：**[CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor)
 
 ------
 
