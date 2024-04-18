@@ -37,7 +37,7 @@ def init_page(p, driver):
                        return {width: window.screen.availWidth,height: window.screen.availHeight};}''')
     viewsize["height"] -= 50
     page.set_viewport_size(viewsize)
-    return page
+    return page, browser
 
 
 def optimize_page(page):
@@ -188,7 +188,7 @@ def start_course_loop(page, course_url):
 
 def main_function():
     with sync_playwright() as p:
-        page = init_page(p, driver)
+        page, browser = init_page(p, driver)
         # 进行登录
         print("等待登录完成...")
         auto_login(user, pwd, page)
@@ -205,6 +205,7 @@ def main_function():
             page.set_default_timeout(90 * 60 * 1000)
             # 启动课程主循环
             start_course_loop(page, course_url)
+        browser.close()
     print("==" * 10)
     print("所有课程学习完毕!")
     show_donate("res/QRcode.jpg")

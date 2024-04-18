@@ -7,9 +7,7 @@
     <list default="true" id="dcc73bfe-da6f-47e6-9fad-97de9bf9588f" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Autovisor.py" beforeDir="false" afterPath="$PROJECT_DIR$/Autovisor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/configs.ini" beforeDir="false" afterPath="$PROJECT_DIR$/configs.ini" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/res/configs.py" beforeDir="false" afterPath="$PROJECT_DIR$/res/configs.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -71,7 +69,10 @@
       <workItem from="1712581683666" duration="9895000" />
       <workItem from="1712624722075" duration="10190000" />
       <workItem from="1713338056652" duration="5460000" />
-      <workItem from="1713346196233" duration="2137000" />
+      <workItem from="1713346196233" duration="2408000" />
+      <workItem from="1713362839959" duration="175000" />
+      <workItem from="1713416898544" duration="2397000" />
+      <workItem from="1713422688721" duration="26000" />
     </task>
     <servers />
   </component>
@@ -83,7 +84,7 @@
     <SUITE FILE_PATH="coverage/Autovisor_py$process.coverage" NAME="process 覆盖结果" MODIFIED="1712592404162" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/res" />
     <SUITE FILE_PATH="coverage/configs_py$Autovisor.coverage" NAME="Autovisor 覆盖结果" MODIFIED="1713012277938" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Autovisor_py$support.coverage" NAME="support 覆盖结果" MODIFIED="1713344071752" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/res" />
-    <SUITE FILE_PATH="coverage/Autovisor_py$Autovisor.coverage" NAME="Autovisor 覆盖结果" MODIFIED="1713347264195" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Autovisor_py$Autovisor.coverage" NAME="Autovisor 覆盖结果" MODIFIED="1713418883165" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/configs_py$configs.coverage" NAME="configs 覆盖结果" MODIFIED="1712766720411" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/dist/Autovisor" />
     <SUITE FILE_PATH="coverage/Autovisor_py$test.coverage" NAME="test 覆盖结果" MODIFIED="1713339995569" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Autovisor$Autovisor.coverage" NAME="Autovisor 覆盖结果" MODIFIED="1710908493907" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
