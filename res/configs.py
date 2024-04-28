@@ -12,6 +12,7 @@ class Config:
         self.username = self._config.get('user-account', 'username', raw=True)
         self.password = self._config.get('user-account', 'password', raw=True)
         self.driver = self._config.get('custom-option', 'driver', raw=True)
+        self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
         self.course_urls = self.get_course_urls()
         # 全局常量
         self.login_url = "https://passport.zhihuishu.com/login"
@@ -21,6 +22,8 @@ class Config:
         self.bg_js = '''return document.getElementsByClassName("yidun_bg-img")[0].src'''
         # 弹窗
         self.pop_js = '''document.getElementsByClassName("iconfont iconguanbi")[0].click();'''
+        self.gjh_pop = '''document.getElementsByClassName("course-warn")[0].click();'''
+        self.close_gjh = '''document.getElementsByClassName("rlready-bound-btn")[0].click();'''
         # 其他
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
         self.course_match_rule = re.compile("recruitAndCourseId=[a-zA-Z0-9]+")

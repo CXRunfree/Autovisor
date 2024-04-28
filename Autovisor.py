@@ -20,14 +20,22 @@ def auto_login(_user, _pwd, page):
     page.evaluate(config.login_js)
 
 
-def init_page(p, driver):
+def init_page(p, driver, exe_path):
     # 启动自带浏览器
-    if driver == "Chrome":
-        print("正在启动Chrome浏览器...")
-        browser = p.chromium.launch(channel="chrome", headless=False)
+    if not exe_path:
+        if driver == "Chrome":
+            print("正在启动Chrome浏览器...")
+            browser = p.chromium.launch(channel="chrome", headless=False)
+        else:
+            print("正在启动Edge浏览器...")
+            browser = p.chromium.launch(channel="msedge", headless=False)
     else:
-        print("正在启动Edge浏览器...")
-        browser = p.chromium.launch(channel="msedge", headless=False)
+        if driver == "Chrome":
+            print("正在启动Chrome浏览器...")
+            browser = p.chromium.launch(executable_path=exe_path, channel="chrome", headless=False)
+        else:
+            print("正在启动Edge浏览器...")
+            browser = p.chromium.launch(executable_path=exe_path, channel="msedge", headless=False)
     context = browser.new_context()
     page = context.new_page()
     # 设置程序超时时限
@@ -52,6 +60,10 @@ def optimize_page(page):
         # 关闭上方横幅
         page.wait_for_selector(".exploreTip", timeout=1000)
         page.query_selector('a:has-text("不再提示")').click()
+        # 关闭公众号提示
+        page.evaluate(config.gjh_pop)
+        page.wait_for_selector(".warn-box", timeout=1000)
+        page.evaluate(config.close_gjh)
     finally:
         return
 
@@ -154,6 +166,8 @@ def start_course_loop(page, course_url):
         while curtime != "100%":
             try:
                 page.wait_for_timeout(1000)
+                if page.query_selector(".topic-item"):
+                    skip_questions(page)
                 check_play(page)
                 curtime, total_time = get_progress(page)
                 time_period = (time.time() - start_time) / 60
@@ -188,7 +202,7 @@ def start_course_loop(page, course_url):
 
 def main_function():
     with sync_playwright() as p:
-        page, browser = init_page(p, driver)
+        page, browser = init_page(p, driver,exe_path)
         # 进行登录
         print("等待登录完成...")
         auto_login(user, pwd, page)
@@ -221,6 +235,7 @@ if __name__ == "__main__":
         user = config.username
         pwd = config.password
         driver = config.driver
+        exe_path = config.exe_path
         urls = config.course_urls
         if not isinstance(urls, list):
             print('[Error]"Url"项格式错误!')
