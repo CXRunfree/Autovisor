@@ -1,5 +1,4 @@
 # encoding=utf-8
-import random
 import traceback
 import time
 from typing import Tuple, List
@@ -7,38 +6,29 @@ from res.configs import Config
 from res.process import move_mouse, get_progress, show_progress
 from playwright.sync_api import sync_playwright, Playwright, Page, Browser, Locator
 from playwright._impl._errors import TargetClosedError, TimeoutError
+from res.support import show_donate  # 预加载影响不大
 
 
 def auto_login(config: Config, page: Page):
+    page.goto(config.login_url)
     page.goto(config.login_url)
     page.locator('#lUsername').fill(config.username)
     page.locator('#lPassword').fill(config.password)
     page.wait_for_timeout(500)
     page.evaluate(config.login_js)
-    # 等待完成滑块验证,已设置5min等待时间
+    # 等待完成滑块验证
     page.wait_for_selector(".wall-main", state="hidden")
 
 
 def init_page(p: Playwright, config: Config) -> Tuple[Page, Browser]:
-    # 启动自带浏览器
+    # 启动指定的浏览器
+    driver = "msedge" if config.driver == "edge" else config.driver
     if not config.exe_path:
-        if config.driver == "chrome":
-            print("正在启动Chrome浏览器...")
-            browser = p.chromium.launch(channel="chrome", headless=False)
-        else:
-            print("正在启动Edge浏览器...")
-            browser = p.chromium.launch(channel="msedge", headless=False)
+        print(f"正在启动{config.driver}浏览器...")
+        browser = p.chromium.launch(channel=driver, headless=False)
     else:
-        if config.driver == "chrome":
-            print("正在启动Chrome浏览器...")
-            browser = p.chromium.launch(
-                executable_path=config.exe_path, channel="chrome", headless=False
-            )
-        else:
-            print("正在启动Edge浏览器...")
-            browser = p.chromium.launch(
-                executable_path=config.exe_path, channel="msedge", headless=False
-            )
+        print(f"正在启动{config.driver}浏览器...")
+        browser = p.chromium.launch(executable_path=config.exe_path, channel=driver, headless=False)
     context = browser.new_context()
     page = context.new_page()
     # 设置程序超时时限
@@ -113,16 +103,12 @@ def play_video(page: Page):
 
 
 def skip_questions(page: Page):
-    # 应该在鼠标操作前调用一次，避免因为弹窗导致无法点击
     if not page.query_selector(".topic-item"):
         return
     page.wait_for_selector(".topic-item", state="attached")
     if not page.query_selector(".answer"):
         choices = page.locator(".topic-item").all()
-        # selects = random.sample(choices, k=2)
-        # for each in selects:
-        #     each.click()
-        # 弹窗答题不影响成绩，因此直接全部遍历一遍再关掉即可，否则多选题可能会出现选了关不了的情况
+        # 直接遍历点击所有选项
         for each in choices:
             each.click()
     page.wait_for_timeout(200)
@@ -163,7 +149,7 @@ def start_course_loop(page: Page, course_url, config: Config):
         title = get_lesson_name(page)  # 获取课程小节名
         print("正在学习:%s" % title)
         # 根据进度条判断播放状态
-        curtime, _ = get_progress(page)
+        curtime, total_time = get_progress(page)
         if curtime != "100%":
             skip_questions(page)
             play_video(page)  # 开始播放
@@ -193,8 +179,8 @@ def start_course_loop(page: Page, course_url, config: Config):
         # 完成该小节后的操作
         page.set_default_timeout(90 * 60 * 1000)
         time_period = (time.time() - start_time) / 60
-        if 0 < config.limitMaxTime <= time_period:  # 若达到设定的时限将直接进入下一节
-            print(f"\n当前课程已达时限:{config.limitMaxTime}min\n即将进入下一节!")
+        if 0 < config.limitMaxTime <= time_period:  # 若达到设定的时限将直接进入下一门课
+            print(f"\n当前课程已达时限:{config.limitMaxTime}min\n即将进入下门课程!")
             break
         # 如果当前小节是最后一节代表课程学习完毕
         class_name = all_class[-1].get_attribute('class')
@@ -211,6 +197,8 @@ def main_function(config: Config):
     with sync_playwright() as p:
         page, browser = init_page(p, config)
         # 进行登录
+        if not config.username or not config.password:
+            print("请手动输入账号密码...")
         print("等待登录完成...")
         auto_login(config, page)
         # 遍历所有课程,加载网页
@@ -222,7 +210,6 @@ def main_function(config: Config):
         browser.close()
     print("==" * 10)
     print("所有课程学习完毕!")
-    from res.support import show_donate # show_donate需要导入PIL，因此lazy import来加快程序启动速度
     show_donate("res/QRcode.jpg")
     time.sleep(5)
 
@@ -233,7 +220,6 @@ if __name__ == "__main__":
     try:
         print("正在载入数据...")
         config = Config()
-        # config = Config("test_config.ini")  # 用于测试
         main_function(config)
     except Exception as e:
         if isinstance(e, KeyError):

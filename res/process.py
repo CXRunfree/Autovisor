@@ -2,6 +2,7 @@
 from playwright._impl._errors import TimeoutError
 from playwright.sync_api import Page
 
+
 def move_mouse(page: Page):
     try:
         page.wait_for_selector(".videoArea", state="attached", timeout=5000)

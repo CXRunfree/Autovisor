@@ -15,4 +15,3 @@ os.system(
 os.mkdir(f"./dist/{name}/res")
 shutil.copyfile("./res/QRcode.jpg", f"./dist/{name}/res/QRcode.jpg")
 shutil.copyfile("./configs.ini", f"./dist/{name}/configs.ini")
-# TODO: 添加License
