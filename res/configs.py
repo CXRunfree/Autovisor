@@ -4,16 +4,34 @@ import re
 
 
 class Config:
-    def __init__(self):
+    def __init__(self, config_path=None):
         self._config = configparser.ConfigParser()
-        self.filename = 'configs.ini'
+        if config_path is None:
+            config_path = 'configs.ini'
+        self.config_path = config_path
         # 读取用户常量
-        self._config.read(self.filename)
+        self._read_config()
         self.username = self._config.get('user-account', 'username', raw=True)
         self.password = self._config.get('user-account', 'password', raw=True)
         self.driver = self._config.get('custom-option', 'driver', raw=True)
+        if not self.driver:
+            self.driver = "Chrome"
+        self.driver = self.driver.lower()
         self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
-        self.course_urls = self.get_course_urls()
+        
+        self.course_match_rule = re.compile("recruitAndCourseId=[a-zA-Z0-9]+")
+        course_urls = self.get_course_urls()
+        if not isinstance(course_urls, list):
+            print('[Error]"Url"项格式错误!')
+            raise KeyError
+        self.course_urls = []
+        for course_url in course_urls:
+            matched = re.findall(self.course_match_rule, course_url)
+            if not matched:
+                print(f"\"{course_url.strip()}\"\n不是一个有效网址,忽略该网址")
+                continue
+            self.course_urls.append(course_url)
+        
         # 全局常量
         self.login_url = "https://passport.zhihuishu.com/login"
         # 登录
@@ -26,7 +44,9 @@ class Config:
         self.close_gjh = '''document.getElementsByClassName("rlready-bound-btn")[0].click();'''
         # 其他
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
-        self.course_match_rule = re.compile("recruitAndCourseId=[a-zA-Z0-9]+")
+
+    def _read_config(self):
+        self._config.read(self.config_path, encoding='utf-8')
 
     def get_course_urls(self):
         course_urls = []
@@ -40,12 +60,12 @@ class Config:
     #这样写可实时响应配置变化
     @property
     def limitMaxTime(self):
-        self._config.read(self.filename)
+        self._read_config()
         return float(self._config.get('custom-option', 'limitMaxTime'))
 
     @property
     def limitSpeed(self):
-        self._config.read(self.filename)
+        self._read_config()
         return float(self._config.get('custom-option', 'limitSpeed', raw=True))
 
     @property

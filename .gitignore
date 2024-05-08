@@ -10,4 +10,9 @@ Releases/
 build/
 dist/
 Res/__init__.py
-.idea/*
+.idea
+__pycache__
+.vscode
+test_config.ini
+.venv
+*.spec
