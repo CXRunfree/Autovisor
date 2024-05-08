@@ -1,8 +1,8 @@
 # encoding=utf-8
 from playwright._impl._errors import TimeoutError
+from playwright.sync_api import Page
 
-
-def move_mouse(page):
+def move_mouse(page: Page):
     try:
         page.wait_for_selector(".videoArea", state="attached", timeout=5000)
         elem = page.locator(".videoArea")
@@ -18,8 +18,8 @@ def move_mouse(page):
         return
 
 
-def get_progress(page):
-    def set_time(h, m, s):
+def get_progress(page: Page):
+    def parse_time(h, m, s):
         return int(h) * 3600 + int(m) * 60 + int(s)
 
     curtime = "0%"
@@ -27,7 +27,7 @@ def get_progress(page):
     cur_play = page.query_selector(".current_play")
     progress = cur_play.query_selector(".progress-num")
     total_time_str = cur_play.query_selector(".time.fl").text_content()
-    total_time = set_time(*total_time_str.split(":"))
+    total_time = parse_time(*total_time_str.split(":"))
     if not progress:
         finish = cur_play.query_selector(".time_icofinish")
         if finish:

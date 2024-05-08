@@ -1,54 +1,59 @@
 # encoding=utf-8
 import random
-import re
 import traceback
 import time
+from typing import Tuple, List
 from res.configs import Config
 from res.process import move_mouse, get_progress, show_progress
-from res.support import show_donate
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Playwright, Page, Browser, Locator
 from playwright._impl._errors import TargetClosedError, TimeoutError
 
 
-def auto_login(_user, _pwd, page):
-    if not user or not pwd:
-        raise UserWarning
+def auto_login(config: Config, page: Page):
     page.goto(config.login_url)
-    page.locator('#lUsername').fill(_user)
-    page.locator('#lPassword').fill(_pwd)
+    page.locator('#lUsername').fill(config.username)
+    page.locator('#lPassword').fill(config.password)
     page.wait_for_timeout(500)
     page.evaluate(config.login_js)
+    # 等待完成滑块验证,已设置5min等待时间
+    page.wait_for_selector(".wall-main", state="hidden")
 
 
-def init_page(p, driver, exe_path):
+def init_page(p: Playwright, config: Config) -> Tuple[Page, Browser]:
     # 启动自带浏览器
-    if not exe_path:
-        if driver == "Chrome":
+    if not config.exe_path:
+        if config.driver == "chrome":
             print("正在启动Chrome浏览器...")
             browser = p.chromium.launch(channel="chrome", headless=False)
         else:
             print("正在启动Edge浏览器...")
             browser = p.chromium.launch(channel="msedge", headless=False)
     else:
-        if driver == "Chrome":
+        if config.driver == "chrome":
             print("正在启动Chrome浏览器...")
-            browser = p.chromium.launch(executable_path=exe_path, channel="chrome", headless=False)
+            browser = p.chromium.launch(
+                executable_path=config.exe_path, channel="chrome", headless=False
+            )
         else:
             print("正在启动Edge浏览器...")
-            browser = p.chromium.launch(executable_path=exe_path, channel="msedge", headless=False)
+            browser = p.chromium.launch(
+                executable_path=config.exe_path, channel="msedge", headless=False
+            )
     context = browser.new_context()
     page = context.new_page()
     # 设置程序超时时限
     page.set_default_timeout(300 * 1000 * 1000)
     # 设置浏览器视口大小
-    viewsize = page.evaluate('''() => {
-                       return {width: window.screen.availWidth,height: window.screen.availHeight};}''')
+    viewsize = page.evaluate(
+        '''() => {
+                       return {width: window.screen.availWidth,height: window.screen.availHeight};}'''
+    )
     viewsize["height"] -= 50
     page.set_viewport_size(viewsize)
     return page, browser
 
 
-def optimize_page(page):
+def optimize_page(page: Page):
     # 关闭学习须知
     page.evaluate(config.pop_js)
     # 根据当前时间切换夜间模式
@@ -56,74 +61,78 @@ def optimize_page(page):
     if hour >= 18 or hour < 7:
         page.wait_for_selector(".Patternbtn-div")
         page.evaluate(config.night_js)
-    try:
-        # 关闭上方横幅
-        page.wait_for_selector(".exploreTip", timeout=1000)
-        page.query_selector('a:has-text("不再提示")').click()
-        # 关闭公众号提示
-        page.evaluate(config.gjh_pop)
-        page.wait_for_selector(".warn-box", timeout=1000)
-        page.evaluate(config.close_gjh)
-    finally:
-        return
+    # 关闭上方横幅
+    page.wait_for_selector(".exploreTip", timeout=1000)
+    page.query_selector('a:has-text("不再提示")').click()
+    # 关闭公众号提示
+    page.evaluate(config.gjh_pop)
+    page.wait_for_selector(".warn-box", timeout=1000)
+    page.evaluate(config.close_gjh)
 
 
-def get_lesson_name(page):
+def get_lesson_name(page: Page):
     title_ele = page.wait_for_selector("#lessonOrder")
     page.wait_for_timeout(500)
     title_ = title_ele.get_attribute("title")
     return title_
 
 
-def video_optimize(page):
+def video_optimize(page: Page):
     try:
         move_mouse(page)
-        page.wait_for_selector(".volumeBox").click()  # 设置静音
+        # 设置静音
+        page.wait_for_selector(".volumeBox").click()
         page.wait_for_timeout(200)
-        page.wait_for_selector(".definiBox").hover()  # 切换流畅画质
+        # 切换流畅画质
+        page.wait_for_selector(".definiBox").hover()
         low_quality = page.wait_for_selector(".line1bq")
         low_quality.hover()
         low_quality.click()
         page.wait_for_timeout(200)
-        page.wait_for_selector(".speedBox").hover()
         # 将1.5倍速项修改为指定倍速
+        page.wait_for_selector(".speedBox").hover()
         page.evaluate(config.revise_speed_name)
         max_speed = page.wait_for_selector(".speedTab15")
         max_speed.hover()
         revise_speed = page.locator("div[rate=\"1.5\"]")
-        revise_speed.evaluate(f'revise => revise.setAttribute("rate","{config.limitSpeed}");')
+        revise_speed.evaluate(
+            f'revise => revise.setAttribute("rate","{config.limitSpeed}");'
+        )
         max_speed.click()
         return True
     except:
         return False
 
 
-def check_play(page):
+def play_video(page: Page):
     playing = page.query_selector(".pauseButton")
     if not playing:
         move_mouse(page)
         canvas = page.wait_for_selector(".videoArea", state="attached")
         canvas.click()
-        return False
-    else:
-        return True
 
 
-def skip_questions(page):
+def skip_questions(page: Page):
+    # 应该在鼠标操作前调用一次，避免因为弹窗导致无法点击
+    if not page.query_selector(".topic-item"):
+        return
     page.wait_for_selector(".topic-item", state="attached")
     if not page.query_selector(".answer"):
         choices = page.locator(".topic-item").all()
-        selects = random.sample(choices, k=2)
-        for each in selects:
+        # selects = random.sample(choices, k=2)
+        # for each in selects:
+        #     each.click()
+        # 弹窗答题不影响成绩，因此直接全部遍历一遍再关掉即可，否则多选题可能会出现选了关不了的情况
+        for each in choices:
             each.click()
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(200)
     close = page.locator('//div[@class="btn"]')
     close.click()
 
 
-def get_filtered_class(page):
+def get_filtered_class(page: Page) -> List[Locator]:
     try:
-        page.wait_for_selector(".time_icofinish",timeout=1000)
+        page.wait_for_selector(".time_icofinish", timeout=1000)
     except TimeoutError:
         pass
     all_class = page.locator(".clearfix.video").all()
@@ -135,7 +144,7 @@ def get_filtered_class(page):
     return new_class
 
 
-def start_course_loop(page, course_url):
+def start_course_loop(page: Page, course_url, config: Config):
     page.goto(course_url)
     page.wait_for_selector(".studytime-div")
     # 关闭弹窗,优化页面体验
@@ -148,27 +157,23 @@ def start_course_loop(page, course_url):
     start_time = time.time()  # 记录开始学习时间
     for each in all_class:
         page.wait_for_selector(".current_play", state="attached")
+        skip_questions(page)
         each.click()
         page.wait_for_timeout(1000)
         title = get_lesson_name(page)  # 获取课程小节名
         print("正在学习:%s" % title)
-        try:  # 防止一开始就是题目界面
-            page.wait_for_selector(".topic-item", timeout=3000)
-            skip_questions(page)
-        except TimeoutError:
-            pass
         # 根据进度条判断播放状态
-        curtime = get_progress(page)[0]
+        curtime, _ = get_progress(page)
         if curtime != "100%":
-            check_play(page)  # 开始播放
+            skip_questions(page)
+            play_video(page)  # 开始播放
             video_optimize(page)  # 对播放页进行初始化配置
         page.set_default_timeout(4000)
         while curtime != "100%":
             try:
                 page.wait_for_timeout(1000)
-                if page.query_selector(".topic-item"):
-                    skip_questions(page)
-                check_play(page)
+                skip_questions(page)
+                play_video(page)
                 curtime, total_time = get_progress(page)
                 time_period = (time.time() - start_time) / 60
                 if 0 < config.limitMaxTime <= time_period:
@@ -178,7 +183,9 @@ def start_course_loop(page, course_url):
             except TimeoutError as e:
                 if page.query_selector(".yidun_modal__title"):
                     print("\n检测到安全验证,正在等待手动完成...")
-                    page.wait_for_selector(".yidun_modal__title", state="hidden", timeout=90 * 60 * 1000)
+                    page.wait_for_selector(
+                        ".yidun_modal__title", state="hidden", timeout=90 * 60 * 1000
+                    )
                 elif page.query_selector(".topic-item"):
                     skip_questions(page)
                 else:
@@ -197,31 +204,25 @@ def start_course_loop(page, course_url):
         else:  # 否则为完成当前课程的一个小节
             print(f"\n\"{title}\" Done !")
             # 每完成一节提示一次时间
-            print("本次课程已学习:%.1f min" % time_period)
+            print(f"本次课程已学习:{time_period:.1f} min")
 
 
-def main_function():
+def main_function(config: Config):
     with sync_playwright() as p:
-        page, browser = init_page(p, driver,exe_path)
+        page, browser = init_page(p, config)
         # 进行登录
         print("等待登录完成...")
-        auto_login(user, pwd, page)
-        # 等待完成滑块验证,已设置5min等待时间
-        page.wait_for_selector(".wall-main", state="hidden")
+        auto_login(config, page)
         # 遍历所有课程,加载网页
-        id_pattern = config.course_match_rule  # 匹配网址格式
-        for course_url in urls:
-            matched = re.findall(id_pattern, course_url)
-            if not matched:
-                print(f"\"{course_url.strip()}\"\n不是一个有效网址,即将自动跳过!")
-                continue
+        for course_url in config.course_urls:
             print("开始加载播放页...")
             page.set_default_timeout(90 * 60 * 1000)
             # 启动课程主循环
-            start_course_loop(page, course_url)
+            start_course_loop(page, course_url, config)
         browser.close()
     print("==" * 10)
     print("所有课程学习完毕!")
+    from res.support import show_donate # show_donate需要导入PIL，因此lazy import来加快程序启动速度
     show_donate("res/QRcode.jpg")
     time.sleep(5)
 
@@ -232,15 +233,8 @@ if __name__ == "__main__":
     try:
         print("正在载入数据...")
         config = Config()
-        user = config.username
-        pwd = config.password
-        driver = config.driver
-        exe_path = config.exe_path
-        urls = config.course_urls
-        if not isinstance(urls, list):
-            print('[Error]"Url"项格式错误!')
-            raise KeyError
-        main_function()
+        # config = Config("test_config.ini")  # 用于测试
+        main_function(config)
     except Exception as e:
         if isinstance(e, KeyError):
             input("[Error]可能是account文件的配置出错!")
