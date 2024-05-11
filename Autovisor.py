@@ -55,7 +55,7 @@ def optimize_page(page: Page):
     page.wait_for_selector(".exploreTip", timeout=1000)
     page.query_selector('a:has-text("不再提示")').click()
     # 关闭公众号提示
-    page.evaluate(config.gjh_pop)
+    page.evaluate(config.gzh_pop)
     page.wait_for_selector(".warn-box", timeout=1000)
     page.evaluate(config.close_gjh)
 
@@ -100,20 +100,25 @@ def play_video(page: Page):
         move_mouse(page)
         canvas = page.wait_for_selector(".videoArea", state="attached")
         canvas.click()
+    # 等待播放键样式改变
+    page.wait_for_selector(".pauseButton", state="attached")
 
 
 def skip_questions(page: Page):
-    if not page.query_selector(".topic-item"):
+    try:
+        page.wait_for_selector(".topic-item", state="attached",timeout=1000)
+    except TimeoutError:
         return
-    page.wait_for_selector(".topic-item", state="attached")
     if not page.query_selector(".answer"):
         choices = page.locator(".topic-item").all()
         # 直接遍历点击所有选项
         for each in choices:
             each.click()
     page.wait_for_timeout(200)
-    close = page.locator('//div[@class="btn"]')
-    close.click()
+    #close = page.locator('//div[@class="btn"]')
+    #close.click()
+    # js模拟ESC键关闭更快
+    page.evaluate(config.close_ques)
 
 
 def get_filtered_class(page: Page) -> List[Locator]:
@@ -148,23 +153,24 @@ def start_course_loop(page: Page, course_url, config: Config):
         page.wait_for_timeout(1000)
         title = get_lesson_name(page)  # 获取课程小节名
         print("正在学习:%s" % title)
+        skip_questions(page)
         # 根据进度条判断播放状态
         curtime, total_time = get_progress(page)
         if curtime != "100%":
-            skip_questions(page)
             play_video(page)  # 开始播放
             video_optimize(page)  # 对播放页进行初始化配置
         page.set_default_timeout(4000)
+        timer = 0
         while curtime != "100%":
             try:
-                page.wait_for_timeout(1000)
                 skip_questions(page)
                 play_video(page)
-                curtime, total_time = get_progress(page)
                 time_period = (time.time() - start_time) / 60
+                timer += 1
                 if 0 < config.limitMaxTime <= time_period:
-                    break
-                else:
+                    break  # 到达限定时间就结束当前课程
+                elif timer % 5 == 0:  # 降低更新频率,减少卡住情况
+                    curtime, total_time = get_progress(page)
                     show_progress(desc="完成进度:", cur_str=curtime)
             except TimeoutError as e:
                 if page.query_selector(".yidun_modal__title"):
@@ -175,7 +181,7 @@ def start_course_loop(page: Page, course_url, config: Config):
                 elif page.query_selector(".topic-item"):
                     skip_questions(page)
                 else:
-                    print(f"\n[Warn]{e}")
+                    print(f"\n[Warn]{e.message}")
         # 完成该小节后的操作
         page.set_default_timeout(90 * 60 * 1000)
         time_period = (time.time() - start_time) / 60
@@ -231,6 +237,9 @@ if __name__ == "__main__":
             input("[Error]程序缺失依赖文件,请重新安装程序!")
         elif isinstance(e, TargetClosedError):
             input("[Error]糟糕,网页关闭了!")
+        elif isinstance(e,UnicodeDecodeError):
+            print("configs配置文件编码有误,保存时请选择utf-8或gbk!")
+            input(f"[Error]{e}")
         else:
             print(f"[Error]{e}")
             with open("log.txt", "w", encoding="utf-8") as log:
