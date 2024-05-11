@@ -120,7 +120,11 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 
 - 打开你的浏览器, 在地址栏中输入 Chrome://version 回车之后, 如图的"可执行文件目录" 就是浏览器安装目录了。
 
-<img src="https://img-blog.csdnimg.cn/direct/aec0acdfd3b946069f5edb31f9191591.png">
+  <img src="https://img-blog.csdnimg.cn/direct/aec0acdfd3b946069f5edb31f9191591.png">
+
+5.关于弹题关不掉/程序卡住的问题:
+
+- 因为弹题是时刻有可能发生的, 而弹题检测不是时刻都进行, 所以这个问题不能完全消除, 只能通过不断优化代码来减少发生的次数, 所以尽可能使用新版本的程序; 
 
 ------
 
