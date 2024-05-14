@@ -44,20 +44,23 @@ def init_page(p: Playwright, config: Config) -> Tuple[Page, Browser]:
 
 
 def optimize_page(page: Page):
-    # 关闭学习须知
-    page.evaluate(config.pop_js)
-    # 根据当前时间切换夜间模式
-    hour = time.localtime().tm_hour
-    if hour >= 18 or hour < 7:
-        page.wait_for_selector(".Patternbtn-div")
-        page.evaluate(config.night_js)
-    # 关闭上方横幅
-    page.wait_for_selector(".exploreTip", timeout=1000)
-    page.query_selector('a:has-text("不再提示")').click()
-    # 关闭公众号提示
-    page.evaluate(config.gzh_pop)
-    page.wait_for_selector(".warn-box", timeout=1000)
-    page.evaluate(config.close_gjh)
+    try:
+        # 关闭学习须知
+        page.evaluate(config.pop_js)
+        # 根据当前时间切换夜间模式
+        hour = time.localtime().tm_hour
+        if hour >= 18 or hour < 7:
+            page.wait_for_selector(".Patternbtn-div")
+            page.evaluate(config.night_js)
+        # 关闭上方横幅
+        page.wait_for_selector(".exploreTip", timeout=1000)
+        page.query_selector('a:has-text("不再提示")').click()
+        # 关闭公众号提示
+        page.evaluate(config.gzh_pop)
+        page.wait_for_selector(".warn-box", timeout=1000)
+        page.evaluate(config.close_gjh)
+    except TimeoutError:
+        return
 
 
 def get_lesson_name(page: Page):
