@@ -53,7 +53,7 @@
 
 **注意：**所有配置项都不加双引号.
 
-<img src="https://img-blog.csdnimg.cn/direct/99f7c45286fa48cd919cfaa7782daa82.png">
+<img src="https://img-blog.csdnimg.cn/direct/52a0d66b345b437abc476cb2036e1117.png">
 
 
 
