@@ -5,19 +5,17 @@ import re
 
 class Config:
     def __init__(self, config_path=None):
-        self._config = configparser.ConfigParser()
         if not config_path:
             config_path = 'configs.ini'
         self.config_path = config_path
+        self._config = configparser.ConfigParser()
         # 读取用户常量
         self._read_config()
         self.username = self._config.get('user-account', 'username', raw=True)
         self.password = self._config.get('user-account', 'password', raw=True)
-        self.driver = self._config.get('custom-option', 'driver', raw=True)
-        if not self.driver:
-            self.driver = "Edge"
-        self.driver = self.driver.lower()
+        self.driver = self.get_driver()
         self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
+        self.enableRepeat = self.get_enableRepeat()
         self.course_match_rule = re.compile("recruitAndCourseId=[a-zA-Z0-9]+")
         self.course_urls = self.get_course_urls()
         # 全局常量
@@ -31,6 +29,7 @@ class Config:
         self.gzh_pop = '''document.getElementsByClassName("course-warn")[0].click();'''
         self.close_gjh = '''document.getElementsByClassName("rlready-bound-btn")[0].click();'''
         self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
+        self.close_assist = '''document.getElementsByClassName("show-icon icon-appear")[0].remove();'''
         # 其他
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
 
@@ -39,6 +38,19 @@ class Config:
             self._config.read(self.config_path, encoding='utf-8')
         except UnicodeDecodeError:
             self._config.read(self.config_path, encoding='gbk')
+
+    def get_driver(self):
+        driver = self._config.get('custom-option', 'driver', raw=True)
+        if not driver:
+            driver = "Edge"
+        return driver.lower()
+
+    def get_enableRepeat(self):
+        enableRepeat = self._config.get('custom-option', 'enableRepeat', raw=True).lower()
+        if enableRepeat == "true":
+            return True
+        else:
+            return False
 
     def get_course_urls(self):
         course_urls = []
@@ -52,8 +64,8 @@ class Config:
             course_urls.append(course_url)
         return course_urls
 
-    #@property修饰器可设置属性
-    #这样写可实时响应配置变化
+    # @property修饰器可设置属性
+    # 这样写可实时响应配置变化
     @property
     def limitMaxTime(self):
         self._read_config()

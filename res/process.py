@@ -35,13 +35,15 @@ def get_progress(page: Page):
             curtime = "100%"
     else:
         curtime = progress.text_content()
+
     return curtime, total_time
 
 
-def show_progress(desc, cur_str: str):
-    percent: int = int(cur_str.split("%")[0])
-    if percent >= 80:  # 80%进度即为完成
+def show_progress(desc, cur_str=None, enableRepeat=False):
+    percent = int(cur_str.split("%")[0])
+    if percent >= 80 and not enableRepeat:  # 学习模式下,80%进度即为完成
         percent = 100
     length = int(percent * 30 // 100)
     progress = ("█" * length).ljust(30, " ")
-    print(f"\r{desc} |{progress}| {percent}%\t", end="", flush=True)
+    percent = str(percent) + "%"
+    print(f"\r{desc} |{progress}| {percent}\t", end="", flush=True)

@@ -4,20 +4,15 @@
 
 **新学期必备干货, 建议收藏备用 !!**
 
-**项目主页：**[CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor)
+**Github项目主页：**[CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor)
 
 ------
 
-#### 2024/5/14 rebuild-3.12.4 更新
+#### 2024/5/23 rebuild-3.13.1 更新
 
-修复到达限定时间无法跳转下一课程的Bug (3.12.3版本出现)
+-  **为适应习惯分机制, 此次更新后可重复刷已完成的课程小节**
 
-- 继续优化题目弹窗的检测功能, 重写了答题逻辑;
-- 优化了配置文件读取方式, 避免编码不一致的报错问题;
-- 新增build.py可对代码进行pyinstaller打包;
-- 代码结构更加规范化;
-
-**感谢 bwnotfound (蓝白bw)**  **提供的代码优化方案 !**
+  (需要在config配置文件中将 **"enableRepeat"** 项 设为 **True**)
 
 详细配置方式请见下方的 **"使用须知".**
 

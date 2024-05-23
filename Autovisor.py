@@ -52,6 +52,9 @@ def optimize_page(page: Page):
         if hour >= 18 or hour < 7:
             page.wait_for_selector(".Patternbtn-div")
             page.evaluate(config.night_js)
+        # 关闭右侧AI助手
+        page.wait_for_selector(".show-icon.icon-appear", timeout=1500)
+        page.evaluate(config.close_assist)
         # 关闭上方横幅
         page.wait_for_selector(".exploreTip", timeout=1000)
         page.query_selector('a:has-text("不再提示")').click()
@@ -109,7 +112,7 @@ def play_video(page: Page):
 
 def skip_questions(page: Page):
     try:
-        page.wait_for_selector(".topic-item", state="attached",timeout=1000)
+        page.wait_for_selector(".topic-item", state="attached", timeout=1000)
     except TimeoutError:
         return
     if not page.query_selector(".answer"):
@@ -117,32 +120,51 @@ def skip_questions(page: Page):
         # 直接遍历点击所有选项
         for each in choices:
             each.click()
-    page.wait_for_timeout(200)
-    #close = page.locator('//div[@class="btn"]')
-    #close.click()
+            page.wait_for_timeout(100)
+    # close = page.locator('//div[@class="btn"]')
+    # close.click()
     # js模拟ESC键关闭更快
     page.evaluate(config.close_ques)
 
 
-def get_filtered_class(page: Page) -> List[Locator]:
+def get_filtered_class(page: Page, enableRepeat=False) -> List[Locator]:
     try:
         page.wait_for_selector(".time_icofinish", timeout=1000)
     except TimeoutError:
         pass
     all_class = page.locator(".clearfix.video").all()
-    new_class = []
-    for each in all_class:
-        isDone = each.locator(".time_icofinish").count()
-        if not isDone:
-            new_class.append(each)
-    return new_class
+    if enableRepeat:
+        return all_class
+    else:
+        new_class = []
+        for each in all_class:
+            isDone = each.locator(".time_icofinish").count()
+            if not isDone:
+                new_class.append(each)
+        return new_class
 
 
-def start_course_loop(page: Page, course_url, config: Config):
-    page.goto(course_url)
-    page.wait_for_selector(".studytime-div")
-    # 关闭弹窗,优化页面体验
-    optimize_page(page)
+def tail_work(page: Page, start_time, all_class, title):
+    reachTimeLimit = False
+    page.set_default_timeout(90 * 60 * 1000)
+    time_period = (time.time() - start_time) / 60
+    if 0 < config.limitMaxTime <= time_period:  # 若达到设定的时限将直接进入下一门课
+        print(f"\n当前课程已达时限:{config.limitMaxTime}min\n即将进入下门课程!")
+        reachTimeLimit = True
+    # 如果当前小节是最后一节代表课程学习完毕
+    class_name = all_class[-1].get_attribute('class')
+    if "current_play" in class_name:
+        print("\n已学完本课程全部内容!")
+        print("==" * 10)
+    else:  # 否则为完成当前课程的一个小节
+        print(f"\n\"{title}\" Done !")
+        # 每完成一节提示一次时间
+        print(f"本次课程已学习:{time_period:.1f} min")
+    return reachTimeLimit
+
+
+# 学习模式: 从未完成课程开始
+def learning_loop(page: Page, config: Config):
     # 获取当前课程名
     course_title = page.wait_for_selector(".source-name").text_content()
     print(f"当前课程:<<{course_title}>>")
@@ -186,20 +208,62 @@ def start_course_loop(page: Page, course_url, config: Config):
                 else:
                     print(f"\n[Warn]{e.message}")
         # 完成该小节后的操作
-        page.set_default_timeout(90 * 60 * 1000)
-        time_period = (time.time() - start_time) / 60
-        if 0 < config.limitMaxTime <= time_period:  # 若达到设定的时限将直接进入下一门课
-            print(f"\n当前课程已达时限:{config.limitMaxTime}min\n即将进入下门课程!")
-            break
-        # 如果当前小节是最后一节代表课程学习完毕
-        class_name = all_class[-1].get_attribute('class')
-        if "current_play" in class_name:
-            print("\n已学完本课程全部内容!")
-            print("==" * 10)
-        else:  # 否则为完成当前课程的一个小节
-            print(f"\n\"{title}\" Done !")
-            # 每完成一节提示一次时间
-            print(f"本次课程已学习:{time_period:.1f} min")
+        reachTimeLimit = tail_work(page, start_time, all_class, title)
+        if reachTimeLimit:
+            return
+
+
+# 复习模式: 允许播放已完成课程小节
+def reviewing_loop(page: Page, config: Config):
+    # 获取当前课程名
+    course_title = page.wait_for_selector(".source-name").text_content()
+    print(f"当前课程:<<{course_title}>>")
+    page.wait_for_selector(".clearfix.video", state="attached")
+    all_class = get_filtered_class(page, enableRepeat=True)
+    course_start_time = time.time()  # 记录开始学习时间
+    for each in all_class:
+        page.wait_for_selector(".current_play", state="attached")
+        skip_questions(page)
+        each.click()
+        page.wait_for_timeout(1000)
+        title = get_lesson_name(page)  # 获取课程小节名
+        print("正在学习:%s" % title)
+        skip_questions(page)
+        # 根据进度条判断播放状态
+        curtime, total_time = get_progress(page)
+        play_video(page)  # 开始播放
+        video_optimize(page)  # 对播放页进行初始化配置
+        start_time = time.time()
+        page.set_default_timeout(4000)
+        timer = 0
+        while True:
+            est_time = (time.time() - start_time) * config.limitSpeed
+            if est_time > total_time:
+                break
+            try:
+                skip_questions(page)
+                play_video(page)
+                time_period = (time.time() - course_start_time) / 60
+                timer += 1
+                if 0 < config.limitMaxTime <= time_period:
+                    break  # 到达限定时间就结束当前课程
+                elif timer % 5 == 0:  # 降低更新频率,减少卡住情况
+                    curtime, total_time = get_progress(page)
+                    show_progress(desc="完成进度:", cur_str=f"{int(est_time * 100 // total_time)}%", enableRepeat=True)
+            except TimeoutError as e:
+                if page.query_selector(".yidun_modal__title"):
+                    print("\n检测到安全验证,正在等待手动完成...")
+                    page.wait_for_selector(
+                        ".yidun_modal__title", state="hidden", timeout=90 * 60 * 1000
+                    )
+                elif page.query_selector(".topic-item"):
+                    skip_questions(page)
+                else:
+                    print(f"\n[Warn]{e.message}")
+        # 完成该小节后的操作
+        reachTimeLimit = tail_work(page, course_start_time, all_class, title)
+        if reachTimeLimit:
+            return
 
 
 def main_function(config: Config):
@@ -214,8 +278,15 @@ def main_function(config: Config):
         for course_url in config.course_urls:
             print("开始加载播放页...")
             page.set_default_timeout(90 * 60 * 1000)
+            page.goto(course_url)
+            page.wait_for_selector(".studytime-div")
+            # 关闭弹窗,优化页面体验
+            optimize_page(page)
             # 启动课程主循环
-            start_course_loop(page, course_url, config)
+            if config.enableRepeat:
+                reviewing_loop(page, config)
+            else:
+                learning_loop(page, config)
         browser.close()
     print("==" * 10)
     print("所有课程学习完毕!")
@@ -240,7 +311,7 @@ if __name__ == "__main__":
             input("[Error]程序缺失依赖文件,请重新安装程序!")
         elif isinstance(e, TargetClosedError):
             input("[Error]糟糕,网页关闭了!")
-        elif isinstance(e,UnicodeDecodeError):
+        elif isinstance(e, UnicodeDecodeError):
             print("configs配置文件编码有误,保存时请选择utf-8或gbk!")
             input(f"[Error]{e}")
         else:
