@@ -1,297 +1,242 @@
 # encoding=utf-8
+import asyncio
 import traceback
 import time
-from typing import Tuple, List
+from typing import Tuple
 from res.configs import Config
-from res.process import move_mouse, get_progress, show_progress
-from playwright.sync_api import sync_playwright, Playwright, Page, Browser, Locator
+from res.progress import get_progress, show_progress
+from playwright.async_api import async_playwright, Playwright, Page, Browser
 from playwright._impl._errors import TargetClosedError, TimeoutError
-from res.support import show_donate  # 预加载影响不大
+from res.support import show_donate
+from res.utils import optimize_page, get_lesson_name, video_optimize, get_filtered_class
+
+# 获取全局事件循环
+event_loop_verify = asyncio.Event()
+event_loop_answer = asyncio.Event()
 
 
-def auto_login(config: Config, page: Page):
-    page.goto(config.login_url)
-    page.goto(config.login_url)
-    page.locator('#lUsername').fill(config.username)
-    page.locator('#lPassword').fill(config.password)
-    page.wait_for_timeout(500)
-    page.evaluate(config.login_js)
-    # 等待完成滑块验证
-    page.wait_for_selector(".wall-main", state="hidden")
+async def auto_login(config: Config, page: Page):
+    await page.goto(config.login_url)
+    await page.locator('#lUsername').fill(config.username)
+    await page.locator('#lPassword').fill(config.password)
+    await page.wait_for_timeout(500)
+    await page.evaluate(config.login_js)
+    await page.wait_for_selector(".wall-main", state="hidden")
 
 
-def init_page(p: Playwright, config: Config) -> Tuple[Page, Browser]:
-    # 启动指定的浏览器
+async def init_page(p: Playwright, config: Config) -> Tuple[Page, Browser]:
     driver = "msedge" if config.driver == "edge" else config.driver
     if not config.exe_path:
         print(f"正在启动{config.driver}浏览器...")
-        browser = p.chromium.launch(channel=driver, headless=False)
+        browser = await p.chromium.launch(channel=driver, headless=False)
     else:
         print(f"正在启动{config.driver}浏览器...")
-        browser = p.chromium.launch(executable_path=config.exe_path, channel=driver, headless=False)
-    context = browser.new_context()
-    page = context.new_page()
-    # 设置程序超时时限
-    page.set_default_timeout(300 * 1000 * 1000)
-    # 设置浏览器视口大小
-    viewsize = page.evaluate(
+        browser = await p.chromium.launch(executable_path=config.exe_path, channel=driver, headless=False)
+
+    context = await browser.new_context()
+    page = await context.new_page()
+    page.set_default_timeout(24 * 3600 * 1000)
+    viewsize = await page.evaluate(
         '''() => {
-                       return {width: window.screen.availWidth,height: window.screen.availHeight};}'''
+            return {width: window.screen.availWidth, height: window.screen.availHeight};
+        }'''
     )
     viewsize["height"] -= 50
-    page.set_viewport_size(viewsize)
+    await page.set_viewport_size(viewsize)
     return page, browser
 
 
-def optimize_page(page: Page):
-    try:
-        # 关闭学习须知
-        page.evaluate(config.pop_js)
-        # 根据当前时间切换夜间模式
-        hour = time.localtime().tm_hour
-        if hour >= 18 or hour < 7:
-            page.wait_for_selector(".Patternbtn-div")
-            page.evaluate(config.night_js)
-        # 关闭右侧AI助手
-        page.wait_for_selector(".show-icon.icon-appear", timeout=1500)
-        page.evaluate(config.close_assist)
-        # 关闭上方横幅
-        page.wait_for_selector(".exploreTip", timeout=1000)
-        page.query_selector('a:has-text("不再提示")').click()
-        # 关闭公众号提示
-        page.evaluate(config.gzh_pop)
-        page.wait_for_selector(".warn-box", timeout=1000)
-        page.evaluate(config.close_gjh)
-    except TimeoutError:
-        return
-
-
-def get_lesson_name(page: Page):
-    title_ele = page.wait_for_selector("#lessonOrder")
-    page.wait_for_timeout(500)
-    title_ = title_ele.get_attribute("title")
-    return title_
-
-
-def video_optimize(page: Page):
-    try:
-        move_mouse(page)
-        # 设置静音
-        page.wait_for_selector(".volumeBox").click()
-        page.wait_for_timeout(200)
-        # 切换流畅画质
-        page.wait_for_selector(".definiBox").hover()
-        low_quality = page.wait_for_selector(".line1bq")
-        low_quality.hover()
-        low_quality.click()
-        page.wait_for_timeout(200)
-        # 将1.5倍速项修改为指定倍速
-        page.wait_for_selector(".speedBox").hover()
-        page.evaluate(config.revise_speed_name)
-        max_speed = page.wait_for_selector(".speedTab15")
-        max_speed.hover()
-        revise_speed = page.locator("div[rate=\"1.5\"]")
-        revise_speed.evaluate(
-            f'revise => revise.setAttribute("rate","{config.limitSpeed}");'
-        )
-        max_speed.click()
-        return True
-    except:
-        return False
-
-
-def play_video(page: Page):
-    playing = page.query_selector(".pauseButton")
-    if not playing:
-        move_mouse(page)
-        canvas = page.wait_for_selector(".videoArea", state="attached")
-        canvas.click()
-    # 等待播放键样式改变
-    page.wait_for_selector(".pauseButton", state="attached")
-
-
-def skip_questions(page: Page):
-    try:
-        page.wait_for_selector(".topic-item", state="attached", timeout=1000)
-    except TimeoutError:
-        return
-    if not page.query_selector(".answer"):
-        choices = page.locator(".topic-item").all()
-        # 直接遍历点击所有选项
-        for each in choices:
-            each.click()
-            page.wait_for_timeout(100)
-    # close = page.locator('//div[@class="btn"]')
-    # close.click()
-    # js模拟ESC键关闭更快
-    page.evaluate(config.close_ques)
-
-
-def get_filtered_class(page: Page, enableRepeat=False) -> List[Locator]:
-    try:
-        page.wait_for_selector(".time_icofinish", timeout=1000)
-    except TimeoutError:
-        pass
-    all_class = page.locator(".clearfix.video").all()
-    if enableRepeat:
-        return all_class
-    else:
-        new_class = []
-        for each in all_class:
-            isDone = each.locator(".time_icofinish").count()
-            if not isDone:
-                new_class.append(each)
-        return new_class
-
-
-def tail_work(page: Page, start_time, all_class, title):
+async def tail_work(page: Page, start_time, all_class, title) -> bool:
     reachTimeLimit = False
-    page.set_default_timeout(90 * 60 * 1000)
+    page.set_default_timeout(24 * 3600 * 1000)
     time_period = (time.time() - start_time) / 60
-    if 0 < config.limitMaxTime <= time_period:  # 若达到设定的时限将直接进入下一门课
+    if 0 < config.limitMaxTime <= time_period:
         print(f"\n当前课程已达时限:{config.limitMaxTime}min\n即将进入下门课程!")
         reachTimeLimit = True
-    # 如果当前小节是最后一节代表课程学习完毕
-    class_name = all_class[-1].get_attribute('class')
-    if "current_play" in class_name:
-        print("\n已学完本课程全部内容!")
-        print("==" * 10)
-    else:  # 否则为完成当前课程的一个小节
-        print(f"\n\"{title}\" Done !")
-        # 每完成一节提示一次时间
-        print(f"本次课程已学习:{time_period:.1f} min")
+    else:
+        class_name = await all_class[-1].get_attribute('class')
+        if "current_play" in class_name:
+            print("\n已学完本课程全部内容!")
+            print("==" * 10)
+        else:
+            print(f"\n\"{title}\" Done !")
+            print(f"本次课程已学习:{time_period:.1f} min")
     return reachTimeLimit
 
 
-# 学习模式: 从未完成课程开始
-def learning_loop(page: Page, config: Config):
-    # 获取当前课程名
-    course_title = page.wait_for_selector(".source-name").text_content()
+async def play_video(page: Page):
+    canvas = await page.wait_for_selector(".videoArea", state="attached")
+    await canvas.click()
+    while True:
+        try:
+            await asyncio.sleep(0.5)
+            playing = await page.query_selector(".pauseButton")
+            if not playing:
+                canvas = await page.wait_for_selector(".videoArea", state="attached")
+                await canvas.click()
+            await page.wait_for_selector(".pauseButton", state="attached")
+        except TimeoutError:
+            continue
+
+
+async def skip_questions(page: Page, event_loop):
+    while True:
+        try:
+            await asyncio.sleep(0.5)
+            await page.wait_for_selector(".topic-item", state="attached", timeout=1000)
+            if not await page.query_selector(".answer"):
+                choices = await page.locator(".topic-item").all()
+                for each in choices:
+                    await each.click()
+                    await page.wait_for_timeout(200)
+            await page.evaluate(config.close_ques)
+            event_loop.set()
+        except TimeoutError:
+            continue
+
+
+async def wait_for_verify(page: Page, event_loop):
+    while True:
+        try:
+            await asyncio.sleep(1)
+            await page.wait_for_selector(".yidun_modal__title", state="attached", timeout=1000)
+            print("\n检测到安全验证,请手动点击完成...")
+            await page.wait_for_selector(".yidun_modal__title", state="hidden", timeout=24 * 3600 * 1000)
+            event_loop.set()
+        except TimeoutError:
+            continue
+
+
+async def learning_loop(page: Page, config: Config):
+    title_selector = await page.wait_for_selector(".source-name")
+    course_title = await title_selector.text_content()
     print(f"当前课程:<<{course_title}>>")
-    page.wait_for_selector(".clearfix.video", state="attached")
-    all_class = get_filtered_class(page)
-    start_time = time.time()  # 记录开始学习时间
-    for each in all_class:
-        page.wait_for_selector(".current_play", state="attached")
-        skip_questions(page)
-        each.click()
-        page.wait_for_timeout(1000)
-        title = get_lesson_name(page)  # 获取课程小节名
+    await page.wait_for_selector(".clearfix.video", state="attached")
+    all_class = await get_filtered_class(page)
+    start_time = time.time()
+    cur_index = 0
+    while cur_index < len(all_class):
+        await all_class[cur_index].click()
+        await page.wait_for_selector(".current_play", state="attached")
+        await page.wait_for_timeout(1000)
+        title = await get_lesson_name(page)
         print("正在学习:%s" % title)
-        skip_questions(page)
-        # 根据进度条判断播放状态
-        curtime, total_time = get_progress(page)
-        if curtime != "100%":
-            play_video(page)  # 开始播放
-            video_optimize(page)  # 对播放页进行初始化配置
-        page.set_default_timeout(4000)
+        page.set_default_timeout(10000)
+        try:
+            await video_optimize(page, config)
+        except TimeoutError:
+            if await page.query_selector(".yidun_modal__title"):
+                await event_loop_verify.wait()
+        curtime, total_time = await get_progress(page)
         timer = 0
         while curtime != "100%":
             try:
-                skip_questions(page)
-                play_video(page)
                 time_period = (time.time() - start_time) / 60
                 timer += 1
                 if 0 < config.limitMaxTime <= time_period:
-                    break  # 到达限定时间就结束当前课程
-                elif timer % 5 == 0:  # 降低更新频率,减少卡住情况
-                    curtime, total_time = get_progress(page)
+                    break
+                elif timer % 5 == 0:
+                    curtime, total_time = await get_progress(page)
                     show_progress(desc="完成进度:", cur_str=curtime)
             except TimeoutError as e:
-                if page.query_selector(".yidun_modal__title"):
-                    print("\n检测到安全验证,正在等待手动完成...")
-                    page.wait_for_selector(
-                        ".yidun_modal__title", state="hidden", timeout=90 * 60 * 1000
-                    )
-                elif page.query_selector(".topic-item"):
-                    skip_questions(page)
+                if await page.query_selector(".yidun_modal__title"):
+                    await event_loop_verify.wait()
+                elif await page.query_selector(".topic-title"):
+                    await event_loop_answer.wait()
                 else:
-                    print(f"\n[Warn]{e.message}")
-        # 完成该小节后的操作
-        reachTimeLimit = tail_work(page, start_time, all_class, title)
+                    print(f"\n[Warn]{repr(e)}")
+        if await all_class[cur_index].get_attribute('class') == "current_play":
+            cur_index += 1
+        reachTimeLimit = await tail_work(page, start_time, all_class, title)
         if reachTimeLimit:
             return
 
 
-# 复习模式: 允许播放已完成课程小节
-def reviewing_loop(page: Page, config: Config):
-    # 获取当前课程名
-    course_title = page.wait_for_selector(".source-name").text_content()
+async def reviewing_loop(page: Page, config: Config):
+    title_selector = await page.wait_for_selector(".source-name")
+    course_title = await title_selector.text_content()
     print(f"当前课程:<<{course_title}>>")
-    page.wait_for_selector(".clearfix.video", state="attached")
-    all_class = get_filtered_class(page, enableRepeat=True)
-    course_start_time = time.time()  # 记录开始学习时间
-    for each in all_class:
-        page.wait_for_selector(".current_play", state="attached")
-        skip_questions(page)
-        each.click()
-        page.wait_for_timeout(1000)
-        title = get_lesson_name(page)  # 获取课程小节名
+    await page.wait_for_selector(".clearfix.video", state="attached")
+    all_class = await get_filtered_class(page, enableRepeat=True)
+    course_start_time = time.time()
+    cur_index = 0
+    while cur_index < len(all_class):
+        await all_class[cur_index].click()
+        await page.wait_for_selector(".current_play", state="attached")
+        await page.wait_for_timeout(1000)
+        title = await get_lesson_name(page)
         print("正在学习:%s" % title)
-        skip_questions(page)
-        # 根据进度条判断播放状态
-        curtime, total_time = get_progress(page)
-        play_video(page)  # 开始播放
-        video_optimize(page)  # 对播放页进行初始化配置
+        page.set_default_timeout(10000)
+        try:
+            await video_optimize(page, config)
+        except TimeoutError:
+            if await page.query_selector(".yidun_modal__title"):
+                await event_loop_verify.wait()
+        curtime, total_time = await get_progress(page)
         start_time = time.time()
-        page.set_default_timeout(4000)
         timer = 0
         while True:
             est_time = (time.time() - start_time) * config.limitSpeed
             if est_time > total_time:
                 break
             try:
-                skip_questions(page)
-                play_video(page)
                 time_period = (time.time() - course_start_time) / 60
                 timer += 1
                 if 0 < config.limitMaxTime <= time_period:
-                    break  # 到达限定时间就结束当前课程
-                elif timer % 5 == 0:  # 降低更新频率,减少卡住情况
-                    curtime, total_time = get_progress(page)
-                    show_progress(desc="完成进度:", cur_str=f"{int(est_time * 100 // total_time)}%", enableRepeat=True)
+                    break
+                elif timer % 5 == 0:
+                    curtime, total_time = await get_progress(page)
+                    show_progress(desc="完成进度:", cur_str=curtime)
             except TimeoutError as e:
-                if page.query_selector(".yidun_modal__title"):
-                    print("\n检测到安全验证,正在等待手动完成...")
-                    page.wait_for_selector(
-                        ".yidun_modal__title", state="hidden", timeout=90 * 60 * 1000
-                    )
-                elif page.query_selector(".topic-item"):
-                    skip_questions(page)
+                if await page.query_selector(".yidun_modal__title"):
+                    await event_loop_verify.wait()
+                elif await page.query_selector(".topic-title"):
+                    await event_loop_answer.wait()
                 else:
-                    print(f"\n[Warn]{e.message}")
-        # 完成该小节后的操作
-        reachTimeLimit = tail_work(page, course_start_time, all_class, title)
+                    print(f"\n[Warn]{repr(e)}")
+        if await all_class[cur_index].get_attribute('class') == "current_play":
+            cur_index += 1
+        reachTimeLimit = await tail_work(page, course_start_time, all_class, title)
         if reachTimeLimit:
             return
 
 
-def main_function(config: Config):
-    with sync_playwright() as p:
-        page, browser = init_page(p, config)
-        # 进行登录
-        if not config.username or not config.password:
-            print("请手动输入账号密码...")
-        print("等待登录完成...")
-        auto_login(config, page)
-        # 遍历所有课程,加载网页
-        for course_url in config.course_urls:
-            print("开始加载播放页...")
-            page.set_default_timeout(90 * 60 * 1000)
-            page.goto(course_url)
-            page.wait_for_selector(".studytime-div")
-            # 关闭弹窗,优化页面体验
-            optimize_page(page)
-            # 启动课程主循环
-            if config.enableRepeat:
-                reviewing_loop(page, config)
-            else:
-                learning_loop(page, config)
-        browser.close()
-    print("==" * 10)
-    print("所有课程学习完毕!")
-    show_donate("res/QRcode.jpg")
-    time.sleep(5)
+async def entrance(config: Config):
+    try:
+        async with async_playwright() as p:
+            page, browser = await init_page(p, config)
+            # 进行登录
+            if not config.username or not config.password:
+                print("请手动输入账号密码...")
+            print("等待登录完成...")
+            await auto_login(config, page)
+            # 遍历所有课程,加载网页
+            for course_url in config.course_urls:
+                print("开始加载播放页...")
+                await page.goto(course_url)
+                await page.wait_for_selector(".studytime-div")
+                # 关闭弹窗,优化页面体验
+                await optimize_page(page, config)
+                # 启动协程任务
+                skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
+                play_video_task = asyncio.create_task(play_video(page))
+                verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
+                # 启动课程主循环
+                if config.enableRepeat:
+                    await reviewing_loop(page, config)
+                else:
+                    await learning_loop(page, config)
+            # 终止协程任务
+            skip_ques_task.cancel()
+            play_video_task.cancel()
+            verify_task.cancel()
+            await browser.close()
+        print("==" * 10)
+        print("所有课程学习完毕!")
+        show_donate("res/QRcode.jpg")
+        time.sleep(5)
+    except Exception:
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
@@ -300,7 +245,7 @@ if __name__ == "__main__":
     try:
         print("正在载入数据...")
         config = Config()
-        main_function(config)
+        asyncio.run(entrance(config))
     except Exception as e:
         if isinstance(e, KeyError):
             input("[Error]可能是account文件的配置出错!")

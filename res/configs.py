@@ -29,30 +29,31 @@ class Config:
         self.gzh_pop = '''document.getElementsByClassName("course-warn")[0].click();'''
         self.close_gjh = '''document.getElementsByClassName("rlready-bound-btn")[0].click();'''
         self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
-        self.close_assist = '''document.getElementsByClassName("show-icon icon-appear")[0].remove();'''
+        self.remove_assist = '''document.getElementsByClassName("ai-show-icon ai-icon-appear")[0].remove();'''
+        self.no_hint = '''document.querySelector('.hint_delete a').click();'''
         # 其他
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
 
-    def _read_config(self):
+    def _read_config(self) -> None:
         try:
             self._config.read(self.config_path, encoding='utf-8')
         except UnicodeDecodeError:
             self._config.read(self.config_path, encoding='gbk')
 
-    def get_driver(self):
+    def get_driver(self) -> str:
         driver = self._config.get('custom-option', 'driver', raw=True)
         if not driver:
             driver = "Edge"
         return driver.lower()
 
-    def get_enableRepeat(self):
+    def get_enableRepeat(self) -> bool:
         enableRepeat = self._config.get('custom-option', 'enableRepeat', raw=True).lower()
         if enableRepeat == "true":
             return True
         else:
             return False
 
-    def get_course_urls(self):
+    def get_course_urls(self) -> list:
         course_urls = []
         _options = self._config.options("course-url")
         for _option in _options:
@@ -67,16 +68,16 @@ class Config:
     # @property修饰器可设置属性
     # 这样写可实时响应配置变化
     @property
-    def limitMaxTime(self):
+    def limitMaxTime(self) -> float:
         self._read_config()
         return float(self._config.get('custom-option', 'limitMaxTime'))
 
     @property
-    def limitSpeed(self):
+    def limitSpeed(self) -> float:
         self._read_config()
         return float(self._config.get('custom-option', 'limitSpeed', raw=True))
 
     @property
-    def revise_speed_name(self):
+    def revise_speed_name(self) -> str:
         return f'''document.getElementsByClassName("speedTab15")[0].innerText = "X {self.limitSpeed}";'''
 
