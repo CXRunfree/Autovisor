@@ -1,5 +1,5 @@
 from typing import List
-from playwright.async_api import Page, Locator
+from playwright.async_api import Page, Locator, ElementHandle
 from res.configs import Config
 from res.progress import move_mouse
 import time
@@ -32,25 +32,10 @@ async def get_lesson_name(page: Page) -> str:
 async def video_optimize(page: Page, config: Config) -> None:
     try:
         await move_mouse(page)
-        volumeBox = await page.wait_for_selector(".volumeBox")
-        await volumeBox.click()
-        await page.wait_for_timeout(200)
-        definiBox = await page.wait_for_selector(".definiBox")
-        await definiBox.hover()
-        low_quality = await page.wait_for_selector(".line1bq")
-        await low_quality.hover()
-        await low_quality.click()
-        await page.wait_for_timeout(200)
-        speedBox = await page.wait_for_selector(".speedBox")
-        await speedBox.hover()
+        await page.evaluate(config.volume_none)
+        await page.evaluate(config.set_none_icon)
+        await page.evaluate(config.revise_speed)
         await page.evaluate(config.revise_speed_name)
-        max_speed = await page.wait_for_selector(".speedTab15")
-        await max_speed.hover()
-        revise_speed = page.locator("div[rate=\"1.5\"]")
-        await revise_speed.evaluate(
-            f'revise => revise.setAttribute("rate","{config.limitSpeed}");'
-        )
-        await max_speed.click()
     except Exception as e:
         print(f"\n[Warn]{repr(e)}")
 

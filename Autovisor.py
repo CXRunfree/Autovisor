@@ -59,27 +59,25 @@ async def tail_work(page: Page, start_time, all_class, title) -> bool:
             print("\n已学完本课程全部内容!")
             print("==" * 10)
         else:
-            print(f"\n\"{title}\" Done !")
+            print(f"\"{title}\" Done !")
             print(f"本次课程已学习:{time_period:.1f} min")
     return reachTimeLimit
 
 
-async def play_video(page: Page):
-    canvas = await page.wait_for_selector(".videoArea", state="attached")
-    await canvas.click()
+async def play_video(page: Page) -> None:
     while True:
         try:
             await asyncio.sleep(0.5)
             playing = await page.query_selector(".pauseButton")
             if not playing:
+                print("[Info]检测到被暂停,正在尝试播放.", end="\r")
                 canvas = await page.wait_for_selector(".videoArea", state="attached")
                 await canvas.click()
-            await page.wait_for_selector(".pauseButton", state="attached")
         except TimeoutError:
             continue
 
 
-async def skip_questions(page: Page, event_loop):
+async def skip_questions(page: Page, event_loop) -> None:
     while True:
         try:
             await asyncio.sleep(0.5)
@@ -95,7 +93,7 @@ async def skip_questions(page: Page, event_loop):
             continue
 
 
-async def wait_for_verify(page: Page, event_loop):
+async def wait_for_verify(page: Page, event_loop) -> None:
     while True:
         try:
             await asyncio.sleep(1)
@@ -103,6 +101,7 @@ async def wait_for_verify(page: Page, event_loop):
             print("\n检测到安全验证,请手动点击完成...")
             await page.wait_for_selector(".yidun_modal__title", state="hidden", timeout=24 * 3600 * 1000)
             event_loop.set()
+            print("\n安全验证已完成,继续播放...")
         except TimeoutError:
             continue
 
@@ -145,7 +144,7 @@ async def learning_loop(page: Page, config: Config):
                     await event_loop_answer.wait()
                 else:
                     print(f"\n[Warn]{repr(e)}")
-        if await all_class[cur_index].get_attribute('class') == "current_play":
+        if "current_play" in await all_class[cur_index].get_attribute('class'):
             cur_index += 1
         reachTimeLimit = await tail_work(page, start_time, all_class, title)
         if reachTimeLimit:
@@ -165,7 +164,7 @@ async def reviewing_loop(page: Page, config: Config):
         await page.wait_for_selector(".current_play", state="attached")
         await page.wait_for_timeout(1000)
         title = await get_lesson_name(page)
-        print("正在学习:%s" % title)
+        print("\n正在学习:%s" % title)
         page.set_default_timeout(10000)
         try:
             await video_optimize(page, config)
@@ -194,7 +193,7 @@ async def reviewing_loop(page: Page, config: Config):
                     await event_loop_answer.wait()
                 else:
                     print(f"\n[Warn]{repr(e)}")
-        if await all_class[cur_index].get_attribute('class') == "current_play":
+        if "current_play" in await all_class[cur_index].get_attribute('class'):
             cur_index += 1
         reachTimeLimit = await tail_work(page, course_start_time, all_class, title)
         if reachTimeLimit:
@@ -202,6 +201,7 @@ async def reviewing_loop(page: Page, config: Config):
 
 
 async def entrance(config: Config):
+    tasks = []
     try:
         async with async_playwright() as p:
             page, browser = await init_page(p, config)
@@ -210,6 +210,11 @@ async def entrance(config: Config):
                 print("请手动输入账号密码...")
             print("等待登录完成...")
             await auto_login(config, page)
+            # 启动协程任务
+            skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
+            play_video_task = asyncio.create_task(play_video(page))
+            verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
+            tasks.extend([skip_ques_task, play_video_task, verify_task])
             # 遍历所有课程,加载网页
             for course_url in config.course_urls:
                 print("开始加载播放页...")
@@ -217,26 +222,22 @@ async def entrance(config: Config):
                 await page.wait_for_selector(".studytime-div")
                 # 关闭弹窗,优化页面体验
                 await optimize_page(page, config)
-                # 启动协程任务
-                skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
-                play_video_task = asyncio.create_task(play_video(page))
-                verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
                 # 启动课程主循环
                 if config.enableRepeat:
                     await reviewing_loop(page, config)
                 else:
                     await learning_loop(page, config)
-            # 终止协程任务
-            skip_ques_task.cancel()
-            play_video_task.cancel()
-            verify_task.cancel()
-            await browser.close()
         print("==" * 10)
         print("所有课程学习完毕!")
         show_donate("res/QRcode.jpg")
-        time.sleep(5)
-    except Exception:
-        traceback.print_exc()
+    except Exception as e:
+        print(f"\n[Error]:{repr(e)}")
+        if isinstance(e, TargetClosedError):
+            print("[Error]检测到网页关闭,正在退出程序...")
+    finally:
+        # 结束所有协程任务
+        await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
+        time.sleep(3)
 
 
 if __name__ == "__main__":

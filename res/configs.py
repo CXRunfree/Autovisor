@@ -30,8 +30,12 @@ class Config:
         self.close_gjh = '''document.getElementsByClassName("rlready-bound-btn")[0].click();'''
         self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
         self.remove_assist = '''document.getElementsByClassName("ai-show-icon ai-icon-appear")[0].remove();'''
-        self.no_hint = '''document.querySelector('.hint_delete a').click();'''
-        # 其他
+        self.no_hint = '''const hint = document.querySelector('.hint_delete a'); if (hint) hint.click();'''
+        # 视频元素修改
+        self.play_video = '''const video = document.querySelector('video');video.play();'''
+        self.volume_none = "document.querySelector('video').volume=0;"
+        self.set_none_icon = '''document.querySelector(".volumeBox").classList.add("volumeNone")'''
+        # 夜间模式
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
 
     def _read_config(self) -> None:
@@ -78,6 +82,9 @@ class Config:
         return float(self._config.get('custom-option', 'limitSpeed', raw=True))
 
     @property
-    def revise_speed_name(self) -> str:
-        return f'''document.getElementsByClassName("speedTab15")[0].innerText = "X {self.limitSpeed}";'''
+    def revise_speed(self) -> str:
+        return f"document.querySelector('video').playbackRate={self.limitSpeed};"
 
+    @property
+    def revise_speed_name(self) -> str:
+        return f'''document.querySelector(".speedBox span").innerText = "X {self.limitSpeed}";'''
