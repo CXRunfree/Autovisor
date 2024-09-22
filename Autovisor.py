@@ -6,7 +6,8 @@ from typing import Tuple
 from res.configs import Config
 from res.progress import get_progress, show_progress
 from playwright.async_api import async_playwright, Playwright, Page, Browser
-from playwright._impl._errors import TargetClosedError, TimeoutError
+from playwright.async_api import TimeoutError
+from playwright._impl._errors import TargetClosedError
 from res.support import show_donate
 from res.utils import optimize_page, get_lesson_name, video_optimize, get_filtered_class
 

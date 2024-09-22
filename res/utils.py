@@ -1,5 +1,6 @@
 from typing import List
-from playwright.async_api import Page, Locator, ElementHandle
+from playwright.async_api import Page, Locator
+from playwright.async_api import TimeoutError
 from res.configs import Config
 from res.progress import move_mouse
 import time
@@ -42,7 +43,7 @@ async def video_optimize(page: Page, config: Config) -> None:
 
 async def get_filtered_class(page: Page, enableRepeat=False) -> List[Locator]:
     try:
-        await page.wait_for_selector(".time_icofinish", timeout=1000)
+        await page.wait_for_selector(".time_icofinish", timeout=2000)
     except TimeoutError:
         pass
     all_class = await page.locator(".clearfix.video").all()
