@@ -64,7 +64,7 @@ class Config:
             course_url = self._config.get("course-url", _option, raw=True)
             matched = re.findall(self.course_match_rule, course_url)
             if not matched:
-                print(f"\"{course_url.strip()}\"\n不是一个有效网址,将忽略该网址.")
+                print(f"\"{course_url.strip()}\"\n[Warn]不是一个有效网址,将忽略该网址.")
                 continue
             course_urls.append(course_url)
         return course_urls

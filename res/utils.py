@@ -2,12 +2,12 @@ from typing import List
 from playwright.async_api import Page, Locator
 from playwright.async_api import TimeoutError
 from res.configs import Config
-from res.progress import move_mouse
 import time
 
 
 async def optimize_page(page: Page, config: Config) -> None:
     try:
+        await page.wait_for_load_state("domcontentloaded")
         await page.evaluate(config.pop_js)
         hour = time.localtime().tm_hour
         if hour >= 18 or hour < 7:
@@ -19,26 +19,24 @@ async def optimize_page(page: Page, config: Config) -> None:
         await page.evaluate(config.gzh_pop)
         await page.wait_for_selector(".warn-box", timeout=1500)
         await page.evaluate(config.close_gjh)
-    except TimeoutError:
+    except Exception as e:
         return
+
+
+async def get_video_attr(page, attr: str) -> any:
+    try:
+        await page.wait_for_selector("video", state="attached", timeout=1000)
+        attr = await page.evaluate(f'''document.querySelector('video').{attr}''')
+        return attr
+    except Exception as e:
+        return None
 
 
 async def get_lesson_name(page: Page) -> str:
     title_ele = await page.wait_for_selector("#lessonOrder")
     await page.wait_for_timeout(500)
-    title_ = await title_ele.get_attribute("title")
-    return title_
-
-
-async def video_optimize(page: Page, config: Config) -> None:
-    try:
-        await move_mouse(page)
-        await page.evaluate(config.volume_none)
-        await page.evaluate(config.set_none_icon)
-        await page.evaluate(config.revise_speed)
-        await page.evaluate(config.revise_speed_name)
-    except Exception as e:
-        print(f"\n[Warn]{repr(e)}")
+    title = await title_ele.get_attribute("title")
+    return title
 
 
 async def get_filtered_class(page: Page, enableRepeat=False) -> List[Locator]:

@@ -39,11 +39,20 @@ async def get_progress(page: Page):
     return curtime, total_time
 
 
-def show_progress(desc, cur_str=None, enableRepeat=False):
-    percent = int(cur_str.split("%")[0]) + 1  # Handles a 1% rendering error
-    if percent >= 80 and not enableRepeat:  # In learning mode, 80% progress is considered complete
-        percent = 100
-    length = int(percent * 30 // 100)
-    progress = ("█" * length).ljust(30, " ")
-    percent_str = str(percent) + "%"
-    print(f"\r{desc} |{progress}| {percent_str}\t", end="", flush=True)
+def show_progress(desc, cur_time=None, limit_time=None, enableRepeat=False):
+    if not enableRepeat:
+        percent = int(cur_time.split("%")[0]) + 1  # Handles a 1% rendering error
+        if percent >= 80:  # In learning mode, 80% progress is considered complete
+            percent = 100
+        length = int(percent * 30 // 100)
+        progress = ("█" * length).ljust(30, " ")
+        print(f"\r{desc} |{progress}| {percent}%\t", end="", flush=True)
+    else:
+        left_time = round(limit_time-cur_time,1)
+        percent = int(cur_time/limit_time * 100)
+        if left_time == 0:
+            percent = 100
+        length = int(percent * 20 // 100)
+        progress = ("█" * length).ljust(20, " ")
+        print(f"\r{desc} |{progress}| {percent}%\t剩余 {left_time} min\t", end="", flush=True)
+
