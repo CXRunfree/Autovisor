@@ -2,6 +2,9 @@
 import asyncio
 import traceback
 import time
+import cv2
+from requests import get
+from random import uniform
 from typing import Tuple
 from res.configs import Config
 from res.progress import get_progress, show_progress
@@ -22,20 +25,117 @@ async def auto_login(config: Config, page: Page):
     await page.locator('#lPassword').fill(config.password)
     await page.wait_for_timeout(500)
     await page.evaluate(config.login_js)
-    await page.wait_for_selector(".wall-main", state="hidden")
+    #尝试自动验证5次
+    isPassed = 0
+    for x in range(0,5):
+        try:
+            print(f'[Info]尝试自动过验证第{x+1}次')
+            await page.wait_for_selector(".wall-main", state="attached")
+            max_loc = await progress_img(page)
+            await move_slider(page, max_loc[0])
+            await page.wait_for_selector(".wall-main", state='hidden', timeout = 3000)
+            isPassed = 1
+            break
+        except TimeoutError:
+            continue
+    if not isPassed:
+        print('[Warn]自动过验证失败, 请手动滑块')
+        await page.wait_for_selector(".wall-main", state='hidden')
+    else:
+        print('[Info]自动过验证成功')
 
+async def progress_img(page: Page):
+    #等待图片加载完成
+    if page.locator("div.yidun--loading") != None:
+        await page.wait_for_selector("div.yidun--loading", state="detached")
+    #下载图片
+    bg_url = await page.locator('img.yidun_bg-img').get_attribute('src')
+    with open("./bg.jpg", "wb") as f:
+        f.write(get(bg_url).content)
+    block_url = await page.locator('img.yidun_jigsaw').get_attribute('src')
+    with open("./block.png", "wb") as f:
+        f.write(get(block_url).content)
+
+    #背景处理
+    bg_img = cv2.imread("./bg.jpg")
+    #灰度处理
+    bg_gray = cv2.cvtColor(bg_img, cv2.COLOR_BGR2GRAY)
+    #噪点处理
+    bg_deno = cv2.fastNlMeansDenoising(bg_gray, None, 10, 7, 21)
+    #Otsu’s二值化
+    ret2,bg_th = cv2.threshold(bg_deno,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    #边沿检测
+    bg_canny = cv2.Canny(bg_th, threshold1=500, threshold2=900, apertureSize=3)
+
+    #滑块处理
+    block_img = cv2.imread("./block.png")
+    block_gray = cv2.cvtColor(block_img, cv2.COLOR_BGR2GRAY)
+    #反色
+    block_opsite = cv2.bitwise_not(block_gray)
+    #简单二值化
+    ret, bthimg = cv2.threshold(block_opsite, 240, 255, cv2.THRESH_BINARY_INV)
+    block_canny = cv2.Canny(bthimg, threshold1=500, threshold2=900, apertureSize=3)
+    
+    result = cv2.matchTemplate(bg_canny, block_canny, cv2.TM_CCOEFF_NORMED)
+
+    # 获取匹配结果的位置
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+    top_left2 = max_loc
+    bottom_right2 = (top_left2[0] + block_img.shape[1], top_left2[1] + block_img.shape[0])
+
+    # 在输入图像上绘制矩形标记
+    cv2.imwrite('./bg.jpg', cv2.rectangle(bg_img, top_left2, bottom_right2, (0, 0, 255), 2))
+
+    return max_loc
+
+#生成随机滑动鼠标位置列表
+async def gen_movelist(sum_b):
+    num_list = []
+    sum_n = sum_b
+    for x in range(0,30):
+        temp = uniform(1, sum_n/2)
+        if sum_n <= 1.5 or x == 29:
+            num_list.append(round(sum_n,3))
+            break
+        else:
+            num_list.append(round(temp,3))
+            sum_n = sum_b - temp
+            sum_b = sum_n
+    return num_list
+
+async def move_slider(page: Page, distance):
+    box = await page.locator('div.yidun_slider').bounding_box()
+    await page.locator('div.yidun_slider').hover()
+
+    #生成每次移动距离列表
+    move_list = []
+    move_list = await gen_movelist(distance)
+    #开始拖动
+    await page.mouse.down()
+    for i in range(0,len(move_list)):
+        #30为预设偏移量，如果稳定偏差某一值，请修改
+        await page.mouse.move(box["x"] + sum(move_list[:i]) + 30 + uniform(-1.5, 1.5), box["y"] +uniform(-10, 10), steps=4)
+    await page.mouse.up()
+    
 
 async def init_page(p: Playwright, config: Config) -> Tuple[Page, Browser]:
     driver = "msedge" if config.driver == "edge" else config.driver
-    if not config.exe_path:
-        print(f"[Info]正在启动{config.driver}浏览器...")
-        browser = await p.chromium.launch(channel=driver, headless=False)
-    else:
-        print(f"[Info]正在启动{config.driver}浏览器...")
-        browser = await p.chromium.launch(executable_path=config.exe_path, channel=driver, headless=False)
 
+    print(f"[Info]正在启动{config.driver}浏览器...")
+    browser = await p.chromium.launch(
+        channel=driver,
+        headless=False,
+        executable_path = config.exe_path if config.exe_path else None
+        )
+    
     context = await browser.new_context()
     page = await context.new_page()
+
+    #抹去特征
+    with open('stealth.min.js','r') as f:
+        js=f.read()
+    await page.add_init_script(js)
+
     page.set_default_timeout(24 * 3600 * 1000)
     viewsize = await page.evaluate(
         '''() => {
