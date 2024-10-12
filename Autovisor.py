@@ -2,9 +2,10 @@
 import asyncio
 import traceback
 import time
-import cv2
-from requests import get
+from PIL import Image
 from random import uniform
+from requests import get
+from os import getcwd
 from typing import Tuple
 from res.configs import Config
 from res.progress import get_progress, show_progress
@@ -12,6 +13,7 @@ from playwright.async_api import async_playwright, Playwright, Page, Browser
 from playwright.async_api import TimeoutError
 from playwright._impl._errors import TargetClosedError
 from res.support import show_donate
+from res.processimg import canny_edge_detection, otsu_threshold, match_template
 from res.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr
 
 # 获取全局事件循环
@@ -25,14 +27,14 @@ async def auto_login(config: Config, page: Page):
     await page.locator('#lPassword').fill(config.password)
     await page.wait_for_timeout(500)
     await page.evaluate(config.login_js)
-    #尝试自动验证5次
+    # 尝试自动验证5次
     isPassed = 0
-    for x in range(0,5):
+    for x in range(0,10):
         try:
             print(f'[Info]尝试自动过验证第{x+1}次')
             await page.wait_for_selector(".wall-main", state="attached")
             max_loc = await progress_img(page)
-            await move_slider(page, max_loc[0])
+            await move_slider(page, max_loc[1])
             await page.wait_for_selector(".wall-main", state='hidden', timeout = 3000)
             isPassed = 1
             break
@@ -44,51 +46,32 @@ async def auto_login(config: Config, page: Page):
     else:
         print('[Info]自动过验证成功')
 
-async def progress_img(page: Page):
-    #等待图片加载完成
+
+async def progress_img(page: Page) -> int:
+    # 等待图片加载完成
     if page.locator("div.yidun--loading") != None:
         await page.wait_for_selector("div.yidun--loading", state="detached")
-    #下载图片
+    # 下载图片
+
+    # 背景
     bg_url = await page.locator('img.yidun_bg-img').get_attribute('src')
+    # 滑块
+    bk_url = await page.locator('img.yidun_jigsaw').get_attribute('src')
     with open("./bg.jpg", "wb") as f:
         f.write(get(bg_url).content)
-    block_url = await page.locator('img.yidun_jigsaw').get_attribute('src')
     with open("./block.png", "wb") as f:
-        f.write(get(block_url).content)
-
-    #背景处理
-    bg_img = cv2.imread("./bg.jpg")
-    #灰度处理
-    bg_gray = cv2.cvtColor(bg_img, cv2.COLOR_BGR2GRAY)
-    #噪点处理
-    bg_deno = cv2.fastNlMeansDenoising(bg_gray, None, 10, 7, 21)
-    #Otsu’s二值化
-    ret2,bg_th = cv2.threshold(bg_deno,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-    #边沿检测
-    bg_canny = cv2.Canny(bg_th, threshold1=500, threshold2=900, apertureSize=3)
-
-    #滑块处理
-    block_img = cv2.imread("./block.png")
-    block_gray = cv2.cvtColor(block_img, cv2.COLOR_BGR2GRAY)
-    #反色
-    block_opsite = cv2.bitwise_not(block_gray)
-    #简单二值化
-    ret, bthimg = cv2.threshold(block_opsite, 240, 255, cv2.THRESH_BINARY_INV)
-    block_canny = cv2.Canny(bthimg, threshold1=500, threshold2=900, apertureSize=3)
+        f.write(get(bk_url).content)
     
-    result = cv2.matchTemplate(bg_canny, block_canny, cv2.TM_CCOEFF_NORMED)
+    bg_img = Image.open("./bg.jpg")
+    bk_img = Image.open("./block.png")
+    #Canny算子边缘检测
+    bg_otsu = await canny_edge_detection(await otsu_threshold(bg_img))
+    bk_otsu = await canny_edge_detection(await otsu_threshold(bk_img))
+    location, score = await match_template(bg_otsu, bk_otsu)
+    return location
 
-    # 获取匹配结果的位置
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-    top_left2 = max_loc
-    bottom_right2 = (top_left2[0] + block_img.shape[1], top_left2[1] + block_img.shape[0])
 
-    # 在输入图像上绘制矩形标记
-    cv2.imwrite('./bg.jpg', cv2.rectangle(bg_img, top_left2, bottom_right2, (0, 0, 255), 2))
-
-    return max_loc
-
-#生成随机滑动鼠标位置列表
+# 生成随机滑动鼠标位置列表
 async def gen_movelist(sum_b):
     num_list = []
     sum_n = sum_b
@@ -103,17 +86,17 @@ async def gen_movelist(sum_b):
             sum_b = sum_n
     return num_list
 
-async def move_slider(page: Page, distance):
+async def move_slider(page: Page, distance) -> None:
     box = await page.locator('div.yidun_slider').bounding_box()
     await page.locator('div.yidun_slider').hover()
 
-    #生成每次移动距离列表
+    # 生成每次移动距离列表
     move_list = []
     move_list = await gen_movelist(distance)
-    #开始拖动
+    # 开始拖动
     await page.mouse.down()
     for i in range(0,len(move_list)):
-        #30为预设偏移量，如果稳定偏差某一值，请修改
+        # 30为预设偏移量，如果稳定偏差某一值，请修改
         await page.mouse.move(box["x"] + sum(move_list[:i]) + 30 + uniform(-1.5, 1.5), box["y"] +uniform(-10, 10), steps=4)
     await page.mouse.up()
     
@@ -227,7 +210,7 @@ async def wait_for_verify(page: Page, event_loop) -> None:
 
 
 async def learning_loop(page: Page, config: Config):
-    #新版链接没有.source-name，用ai视频总结代替
+    # 新版链接没有.source-name，用ai视频总结代替
     title_selector = await page.wait_for_selector(".source-name, .top-box+p")
     course_title = await title_selector.text_content()
     print(f"[Info]当前课程:<<{course_title}>>")
@@ -365,7 +348,7 @@ async def entrance(config: Config):
         print(f"\n[Error]:{repr(e)}")
         if isinstance(e, TargetClosedError):
             print("[Error]检测到网页关闭,正在退出程序...")
-        #抛出异常,存入log文件
+        # 抛出异常,存入log文件
         raise e
     finally:
         # 结束所有协程任务
