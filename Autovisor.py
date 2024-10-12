@@ -162,6 +162,8 @@ async def video_optimize(page: Page, config: Config) -> None:
                 await page.evaluate(config.revise_speed_name)
                 print(f"[Info]视频已修改为{config.limitSpeed}倍速.")
         except Exception as e:
+            if isinstance(e, TargetClosedError):
+                break
             continue
 
 
@@ -178,6 +180,8 @@ async def play_video(page: Page) -> None:
                 await page.evaluate('document.querySelector("video").play();')
                 print("[Info]视频已恢复播放.")
         except Exception as e:
+            if isinstance(e, TargetClosedError):
+                break
             continue
 
 
@@ -201,6 +205,8 @@ async def skip_questions(page: Page, event_loop) -> None:
             not_finish_close = await page.query_selector(".el-message-box__headerbtn")
             if not_finish_close:
                 await not_finish_close.click()
+            if isinstance(e, TargetClosedError):
+                break
             continue
 
 
@@ -215,15 +221,19 @@ async def wait_for_verify(page: Page, event_loop) -> None:
             event_loop.set()
             print("\n[Info]安全验证已完成,继续播放...")
         except Exception as e:
+            if isinstance(e, TargetClosedError):
+                break
             continue
 
 
 async def learning_loop(page: Page, config: Config):
-    title_selector = await page.wait_for_selector(".source-name")
+    #新版链接没有.source-name，用ai视频总结代替
+    title_selector = await page.wait_for_selector(".source-name, .top-box+p")
     course_title = await title_selector.text_content()
     print(f"[Info]当前课程:<<{course_title}>>")
     await page.wait_for_selector(".clearfix.video", state="attached")
     all_class = await get_filtered_class(page)
+    await page.wait_for_timeout(500)
     start_time = time.time()
     cur_index = 0
     while cur_index < len(all_class):
@@ -261,7 +271,7 @@ async def learning_loop(page: Page, config: Config):
 
 async def reviewing_loop(page: Page, config: Config):
     limit_time = config.limitMaxTime
-    title_selector = await page.wait_for_selector(".source-name")
+    title_selector = await page.wait_for_selector(".source-name, .top-box+p")
     course_title = await title_selector.text_content()
     print(f"当前课程:<<{course_title}>>")
     await page.wait_for_selector(".clearfix.video", state="attached")
@@ -320,7 +330,6 @@ async def tail_work(page: Page, start_time, all_class, title) -> bool:
             print(f"本次课程已学习:{time_period:.1f} min")
     return reachTimeLimit
 
-
 async def entrance(config: Config):
     tasks = []
     try:
@@ -356,6 +365,8 @@ async def entrance(config: Config):
         print(f"\n[Error]:{repr(e)}")
         if isinstance(e, TargetClosedError):
             print("[Error]检测到网页关闭,正在退出程序...")
+        #抛出异常,存入log文件
+        raise e
     finally:
         # 结束所有协程任务
         await asyncio.gather(*tasks, return_exceptions=True) if tasks else None

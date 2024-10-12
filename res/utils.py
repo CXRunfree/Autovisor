@@ -40,8 +40,9 @@ async def get_lesson_name(page: Page) -> str:
 
 
 async def get_filtered_class(page: Page, enableRepeat=False) -> List[Locator]:
+    #题目做完在智慧共享课中是.progress[style *= '100']
     try:
-        await page.wait_for_selector(".time_icofinish", timeout=2000)
+        await page.wait_for_selector(".progress[style *= '100'], .time_icofinish", timeout=2000)
     except TimeoutError:
         pass
     all_class = await page.locator(".clearfix.video").all()
@@ -50,7 +51,7 @@ async def get_filtered_class(page: Page, enableRepeat=False) -> List[Locator]:
     else:
         new_class = []
         for each in all_class:
-            isDone = await each.locator(".time_icofinish").count()
+            isDone = await each.locator(".progress[style *= '100'], .time_icofinish").count()
             if not isDone:
                 new_class.append(each)
         return new_class

@@ -26,16 +26,15 @@ async def get_progress(page: Page):
     await move_mouse(page)
     cur_play = await page.query_selector(".current_play")
     progress = await cur_play.query_selector(".progress-num")
-    total_time_selector = await cur_play.query_selector(".time.fl")
-    total_time_str = await total_time_selector.text_content()
+    total_time_selector = await cur_play.query_selector(".time.fl, .time")
+    total_time_str = await total_time_selector.evaluate('node => node.textContent')
     total_time = parse_time(*total_time_str.split(":"))
     if not progress:
-        finish = await cur_play.query_selector(".time_icofinish")
+        finish = await cur_play.query_selector(".progress[style *= '100'], .time_icofinish")
         if finish:
             curtime = "100%"
     else:
-        curtime = await progress.text_content()
-
+        curtime = await progress.evaluate('node => node.textContent')
     return curtime, total_time
 
 
