@@ -24,7 +24,8 @@ async def get_progress(page: Page):
 
     curtime = "0%"
     await move_mouse(page)
-    cur_play = await page.query_selector(".current_play")
+    # 有时候获取不到cur_play, 添加等待
+    cur_play = await page.wait_for_selector(".current_play", timeout=1000)
     progress = await cur_play.query_selector(".progress-num")
     total_time_selector = await cur_play.query_selector(".time.fl, .time")
     total_time_str = await total_time_selector.evaluate('node => node.textContent')
@@ -34,13 +35,17 @@ async def get_progress(page: Page):
         if finish:
             curtime = "100%"
     else:
-        curtime = await progress.evaluate('node => node.textContent')
+        curtime = await progress.text_content()
     return curtime, total_time
 
 
 def show_progress(desc, cur_time=None, limit_time=None, enableRepeat=False):
     if not enableRepeat:
-        percent = int(cur_time.split("%")[0]) + 1  # Handles a 1% rendering error
+        try:
+            percent = int(cur_time.split("%")[0]) + 1  # Handles a 1% rendering error
+        except ValueError:
+            # 新版智慧共享课没有进度时, 获取不到进度, 手动赋值
+            percent = 0
         if percent >= 80:  # In learning mode, 80% progress is considered complete
             percent = 100
         length = int(percent * 30 // 100)

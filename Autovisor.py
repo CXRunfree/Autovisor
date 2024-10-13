@@ -227,9 +227,10 @@ async def wait_for_verify(page: Page, event_loop) -> None:
 
 
 async def learning_loop(page: Page, config: Config):
-    #新版链接没有.source-name，用ai视频总结代替
-    title_selector = await page.wait_for_selector(".source-name, .top-box+p")
-    course_title = await title_selector.text_content()
+    #新版链接没有.source-name，用时间代替
+    title_selector = await page.wait_for_selector(".source-name, .current-time")
+    # span不能使用.textcontent()
+    course_title = await title_selector.evaluate('node => node.textContent')
     print(f"[Info]当前课程:<<{course_title}>>")
     await page.wait_for_selector(".clearfix.video", state="attached")
     all_class = await get_filtered_class(page)
@@ -271,8 +272,8 @@ async def learning_loop(page: Page, config: Config):
 
 async def reviewing_loop(page: Page, config: Config):
     limit_time = config.limitMaxTime
-    title_selector = await page.wait_for_selector(".source-name, .top-box+p")
-    course_title = await title_selector.text_content()
+    title_selector = await page.wait_for_selector(".source-name, .current-time")
+    course_title = await title_selector.evaluate('node => node.textContent')
     print(f"当前课程:<<{course_title}>>")
     await page.wait_for_selector(".clearfix.video", state="attached")
     all_class = await get_filtered_class(page, enableRepeat=True)
