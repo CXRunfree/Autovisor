@@ -50,6 +50,13 @@ class Config:
             driver = "Edge"
         return driver.lower()
 
+    def get_autoCaptcha(self) -> bool:
+        autoCaptcha = self._config.get('custom-option', 'enableAutoCaptcha', raw=True).lower()
+        if autoCaptcha == "true":
+            return True
+        else:
+            return False
+
     def get_enableRepeat(self) -> bool:
         enableRepeat = self._config.get('custom-option', 'enableRepeat', raw=True).lower()
         if enableRepeat == "true":

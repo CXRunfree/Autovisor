@@ -1,4 +1,5 @@
 # encoding=utf-8
+import random
 from playwright.async_api import Page, TimeoutError
 
 
@@ -11,8 +12,8 @@ async def move_mouse(page: Page):
         if not pos:
             return
         # Calculate the target position to move the mouse
-        target_x = pos['x'] + 30
-        target_y = pos['y'] + 30
+        target_x = pos['x'] + random.uniform(-10, 10)
+        target_y = pos['y'] + random.uniform(-10, 10)
         await page.mouse.move(target_x, target_y)
     except TimeoutError:
         return
@@ -39,7 +40,7 @@ async def get_progress(page: Page):
     return curtime, total_time
 
 
-def show_progress(desc, cur_time=None, limit_time=None, enableRepeat=False):
+def show_course_progress(desc, cur_time=None, limit_time=None, enableRepeat=False):
     if not enableRepeat:
         percent = int(cur_time.split("%")[0]) + 1  # Handles a 1% rendering error
         if percent >= 80:  # In learning mode, 80% progress is considered complete
@@ -48,11 +49,17 @@ def show_progress(desc, cur_time=None, limit_time=None, enableRepeat=False):
         progress = ("█" * length).ljust(30, " ")
         print(f"\r{desc} |{progress}| {percent}%\t", end="", flush=True)
     else:
-        left_time = round(limit_time-cur_time,1)
-        percent = int(cur_time/limit_time * 100)
-        if left_time == 0:
+        left_time = round(limit_time - cur_time, 1)
+        percent = int(cur_time / limit_time * 100)
+        if left_time <= 0:
             percent = 100
         length = int(percent * 20 // 100)
         progress = ("█" * length).ljust(20, " ")
         print(f"\r{desc} |{progress}| {percent}%\t剩余 {left_time} min\t", end="", flush=True)
 
+
+def show_progress(desc, current, total, suffix="", width=30):
+    percent = int(current / total * 100)
+    length = int(percent * width // 100)
+    progress = ("█" * length).ljust(width, " ")
+    print(f"\r{desc} |{progress}| {percent}%\t{suffix}", end="", flush=True)

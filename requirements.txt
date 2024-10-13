@@ -1,2 +1,6 @@
 playwright~=1.41.2
 Pillow~=10.1.0
+requests~=2.32.3
+numpy~=1.26.4
+opencv-python~=4.10.0.84
+
