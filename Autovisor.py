@@ -205,7 +205,6 @@ async def main(config: Config):
     finally:
         # 结束所有协程任务
         await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
-        time.sleep(2)
 
 
 if __name__ == "__main__":
