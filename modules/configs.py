@@ -15,8 +15,7 @@ class Config:
         self.password = self._config.get('user-account', 'password', raw=True)
         self.driver = self.get_driver()
         self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
-        self.enableRepeat = self.get_enableRepeat()
-        self.course_match_rule = re.compile("recruitAndCourseId=[a-zA-Z0-9]+")
+        self.course_match_rule = re.compile("https://(fusioncourseh5|studyvideoh5).+?CourseId=[a-zA-Z0-9]+(&studyMode=[0-9]+)?")
         self.course_urls = self.get_course_urls()
         # 全局常量
         # 登录
@@ -26,15 +25,14 @@ class Config:
         self.bg_js = '''return document.getElementsByClassName("yidun_bg-img")[0].src'''
         # 弹窗
         self.pop_js = '''document.getElementsByClassName("iconfont iconguanbi")[0].click();'''
-        self.gzh_pop = '''document.getElementsByClassName("course-warn")[0].click();'''
-        self.close_gjh = '''document.getElementsByClassName("rlready-bound-btn")[0].click();'''
         self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
         self.remove_assist = '''document.getElementsByClassName("ai-show-icon ai-icon-appear")[0].remove();'''
-        self.no_hint = '''const hint = document.querySelector('.hint_delete a'); if (hint) hint.click();'''
+        self.no_tip = '''document.querySelector(".exploreTip").remove();'''
         # 视频元素修改
         self.play_video = '''const video = document.querySelector('video');video.play();'''
         self.volume_none = "document.querySelector('video').volume=0;"
         self.set_none_icon = '''document.querySelector(".volumeBox").classList.add("volumeNone")'''
+        self.reset_curtime = '''document.querySelector('video').currentTime=0;'''
         # 夜间模式
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
 
@@ -57,13 +55,6 @@ class Config:
         else:
             return False
 
-    def get_enableRepeat(self) -> bool:
-        enableRepeat = self._config.get('custom-option', 'enableRepeat', raw=True).lower()
-        if enableRepeat == "true":
-            return True
-        else:
-            return False
-
     def get_course_urls(self) -> list:
         course_urls = []
         _options = self._config.options("course-url")
@@ -71,7 +62,7 @@ class Config:
             course_url = self._config.get("course-url", _option, raw=True)
             matched = re.findall(self.course_match_rule, course_url)
             if not matched:
-                print(f"\"{course_url.strip()}\"\n[Warn]不是一个有效网址,将忽略该网址.")
+                print(f"\"{course_url.strip()}\"\n不是一个有效网址,将忽略该网址.")
                 continue
             course_urls.append(course_url)
         return course_urls

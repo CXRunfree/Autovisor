@@ -5,7 +5,7 @@ import requests
 import zipfile
 import os
 from importlib import import_module
-from res.progress import show_progress
+from modules.progress import show_progress
 from requests import HTTPError
 
 

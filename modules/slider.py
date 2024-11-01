@@ -3,6 +3,9 @@ import requests
 import random
 from playwright.async_api import Page
 from playwright._impl._errors import TimeoutError
+from modules.logger import Logger
+
+logger = Logger()
 
 # 下载图片并转换为OpenCV格式
 async def download_image(url):
@@ -86,13 +89,13 @@ async def slider_verify(page: Page, modules: list[ModuleType]):
     global cv2, np
     np, cv2 = modules
     if not cv2 or not np:
-        print("[Error]OpenCV或Numpy导入失败,无法开启自动滑块验证.")
+        logger.warn("OpenCV或Numpy导入失败,无法开启自动滑块验证.")
         return
     # 尝试自动验证3次
     isPassed = 0
     for x in range(0, 3):
         try:
-            print(f'[Info]尝试自动过验证第{x + 1}次...')
+            logger.info(f"第{x + 1}次尝试过滑块验证...")
             await page.wait_for_selector(".wall-main", state="attached")
             max_loc = await progress_img(page)
             await move_slider(page, max_loc[0])
@@ -102,7 +105,7 @@ async def slider_verify(page: Page, modules: list[ModuleType]):
         except TimeoutError:
             continue
     if not isPassed:
-        print('[Warn]自动过验证失败, 请手动滑块!')
+        logger.warn("自动过滑块验证失败,请手动验证!")
         await page.wait_for_selector(".wall-main", state='hidden')
     else:
-        print('[Info]自动过滑块验证成功!')
+        logger.info("滑块验证已成功通过.")
