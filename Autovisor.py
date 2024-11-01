@@ -2,6 +2,7 @@
 import asyncio
 import time
 import traceback
+import sys
 from playwright.async_api import async_playwright, Playwright, Page, Browser
 from playwright.async_api import TimeoutError
 from playwright._impl._errors import TargetClosedError
@@ -31,6 +32,7 @@ async def auto_login(config: Config, page: Page, modules=None):
     await page.evaluate(config.login_js)
     if config.get_autoCaptcha() and modules:
         await slider_verify(page, modules)
+    await page.wait_for_selector(".wall-main", state='hidden')
 
 
 async def init_page(p: Playwright, config: Config) -> tuple[Page, Browser]:
@@ -215,7 +217,7 @@ if __name__ == "__main__":
         if not config.course_urls:
             logger.info("未检测到有效网址或不支持此类网页,请检查配置文件!")
             time.sleep(2)
-            exit(-1)
+            sys.exit(-1)
         asyncio.run(main(config))
     except Exception as e:
         logger.error(repr(e), line_break=True)

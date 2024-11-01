@@ -70,8 +70,8 @@ def gen_movelist(sum_n, steps=30):
 
 
 async def move_slider(page: Page, distance, offset=32):
-    box = await page.locator('div.yidun_slider').bounding_box()
     await page.locator('div.yidun_slider').hover()
+    box = await page.locator('div.yidun_slider').bounding_box()
 
     # 生成每次移动距离列表
     move_list = gen_movelist(distance)
@@ -106,6 +106,5 @@ async def slider_verify(page: Page, modules: list[ModuleType]):
             continue
     if not isPassed:
         logger.warn("自动过滑块验证失败,请手动验证!")
-        await page.wait_for_selector(".wall-main", state='hidden')
     else:
         logger.info("滑块验证已成功通过.")

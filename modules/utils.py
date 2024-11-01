@@ -9,7 +9,7 @@ from modules.logger import Logger
 logger = Logger()
 
 
-async def evaluate_js(page: Page, js: str, wait_selector=None, timeout=1500) -> None:
+async def evaluate_js(page: Page, js: str, wait_selector=None, timeout=None) -> None:
     try:
         if wait_selector:
             await page.wait_for_selector(wait_selector, timeout=timeout)
@@ -23,14 +23,14 @@ async def evaluate_js(page: Page, js: str, wait_selector=None, timeout=1500) -> 
 async def optimize_page(page: Page, config: Config, is_new_version=False) -> None:
     try:
         await page.wait_for_load_state("domcontentloaded")
-        await evaluate_js(page, config.pop_js, ".studytime-div", 5000)
+        await evaluate_js(page, config.pop_js, ".studytime-div", None)
         if not is_new_version:
             hour = time.localtime().tm_hour
             if hour >= 18 or hour < 7:
-                await evaluate_js(page, config.night_js, ".Patternbtn-div")
-            await evaluate_js(page, config.remove_assist, ".ai-show-icon.ai-icon-appear")
+                await evaluate_js(page, config.night_js, ".Patternbtn-div", 1500)
+            await evaluate_js(page, config.remove_assist, ".ai-show-icon.ai-icon-appear", 1500)
             await page.wait_for_selector(".exploreTip", timeout=1500)
-            await evaluate_js(page, config.no_tip)
+            await evaluate_js(page, config.no_tip, 1500)
     except Exception as e:
         logger.write_log(f"Exec optimize_page failed. Error:{repr(e)}\n")
         logger.write_log(traceback.format_exc())

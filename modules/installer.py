@@ -1,24 +1,27 @@
 import re
 import sys
 import platform
-import requests
+import traceback
 import zipfile
 import os
 from importlib import import_module
-from modules.progress import show_progress
+import requests
 from requests import HTTPError
+from modules.progress import show_progress
+from modules.logger import Logger
 
+logger = Logger()
 
 def extract_whl(whl_file, extract_to):
     # 检查是否是一个 zip 文件
     if not zipfile.is_zipfile(whl_file):
-        print(f"{whl_file} 不是有效的 .whl 文件")
+        logger.error(f"{whl_file} 不是一个有效的 .whl 文件!")
         return
 
     # 打开并解压 .whl 文件
     with zipfile.ZipFile(whl_file, 'r') as whl_zip:
         whl_zip.extractall(extract_to)
-        print(f"已将 {whl_file} 解压到 {extract_to}")
+        logger.info(f"已将 {whl_file} 解压到: {extract_to}")
 
 
 def get_system_architecture():
@@ -34,7 +37,7 @@ def download_wheel(package_name, version=None):
     base_url = f"https://pypi.tuna.tsinghua.edu.cn/simple/{package_name}/"
 
     # 请求包的页面，找到匹配的 .whl 文件
-    print(f"正在从清华源下载 {package_name} 的 .whl 文件...")
+    logger.info(f"正在从清华源下载 {package_name} 的 .whl 文件...")
     response = requests.get(base_url)
     response.raise_for_status()
     # 获取系统架构
@@ -68,7 +71,7 @@ def download_wheel(package_name, version=None):
                 f.write(chunk)
                 show_progress("下载进度:", current=f.tell(), total=total_size)
 
-    print(f"{whl_path} 下载完成！")
+    logger.info(f"{whl_path} 下载完成！")
     return whl_path
 
 
@@ -77,26 +80,26 @@ def install_package(package, version):
     try:
         # 尝试导入 package
         module = import_module(alias)
-        print(f"{package}-{version} 已安装！")
+        logger.info(f"{package}-{version} 已安装！")
         return module
     except ImportError:
         # 如果导入失败，则下载安装 .whl 文件
-        print(f"{package}-{version} 未安装,正在开始下载...")
+        logger.info(f"{package}-{version} 未安装,正在开始下载...")
         try:
             wheel_path = download_wheel(package, version)
             # 解压 .whl 文件
             extract_whl(wheel_path, "./res")
-            print(f"{package}-{version} 安装成功！")
+            logger.info(f"{package}-{version} 安装完成！")
             # 删除安装包
             os.remove(wheel_path)
             return import_module(alias)
         except HTTPError as e:
-            print(f"[Error]{repr(e)}")
-            print(f"{package}-{version} 下载失败！")
+            logger.write_log(f"[ERROR]{repr(e)}\n{traceback.format_exc()}")
+            logger.error(f"{package}-{version} 下载失败！")
             return None
         except Exception as e:
-            print(f"[Error]{repr(e)}")
-            print(f"{package}-{version} 安装失败！")
+            logger.write_log(f"[ERROR]{repr(e)}\n{traceback.format_exc()}")
+            logger.error(f"{package}-{version} 安装失败！")
             return None
 
 
