@@ -15,7 +15,7 @@ class Config:
         self.password = self._config.get('user-account', 'password', raw=True)
         self.driver = self.get_driver()
         self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
-        self.course_match_rule = re.compile("https://(fusioncourseh5|studyvideoh5).+?CourseId=[a-zA-Z0-9]+(&studyMode=[0-9]+)?")
+        self.course_match_rule = re.compile("https://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]")
         self.course_urls = self.get_course_urls()
         # 全局常量
         # 登录
