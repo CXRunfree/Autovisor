@@ -117,7 +117,7 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 
 (其实作者也要吃饭的 ^-^)
 
-<img src="https://img-blog.csdnimg.cn/direct/2d94a77c4bf643c1bff1712461c4f1bf.png" alt="img" style="zoom: 50%;" />
+<img src="https://i-blog.csdnimg.cn/blog_migrate/0d254d88c1cd0cb0a2fe6c50f8992efb.png" alt="img" style="zoom: 50%;" />
 
 **作者的CSDN:** [欢迎关注~](https://blog.csdn.net/Runfreeone)
 
