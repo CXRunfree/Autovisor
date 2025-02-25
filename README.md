@@ -35,6 +35,8 @@
 - **跳过弹窗和弹出的题目**
 - **自动静音、调成指定的倍速**
 - **检测视频是否暂停并续播**
+- **支持刷习惯分**
+- **支持智慧共享课**
 - 检测当前学习进度并后台实时更新
 - 根据当前时间自动设置背景颜色(白昼/暗夜)
 - 完成章节时将提示已刷课时长
@@ -92,6 +94,9 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 4.我想自定义要启动的浏览器, 但是找不到装在哪里? 
 
 - 打开你的浏览器, 在地址栏中输入 Chrome://version 回车之后, 如图的"可执行文件目录" 就是浏览器安装目录了。
+
+  
+  
   <img src="https://i-blog.csdnimg.cn/blog_migrate/e8fd696257e0b4623a19d4a9e0448bfd.png" alt="img">
 
 5.关于弹题关不掉/程序卡住的问题:
@@ -102,9 +107,7 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 ------
 
 **已知Bug:**
-
 - 浏览器版本太新可能导致第一次启动失败, 重启程序才能解决;
-
 - **长时间挂机**有概率弹出人机验证, 程序检测到后会暂停刷课，直到手动验证完成;
 - 若出现其他异常崩溃，请提交issue并附上报错信息；
 
