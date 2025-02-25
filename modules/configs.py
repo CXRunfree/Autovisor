@@ -5,19 +5,17 @@ import re
 
 class Config:
     def __init__(self, config_path=None):
-        if not config_path:
-            config_path = 'configs.ini'
-        self.config_path = config_path
-        self._config = configparser.ConfigParser()
-        # 读取用户常量
-        self._read_config()
-        self.username = self._config.get('user-account', 'username', raw=True)
-        self.password = self._config.get('user-account', 'password', raw=True)
-        self.driver = self.get_driver()
-        self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
-        self.course_match_rule = re.compile("https://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]")
-        self.course_urls = self.get_course_urls()
-        # 全局常量
+        if config_path:
+            self.config_path = config_path
+            self._config = configparser.ConfigParser()
+            # 读取用户常量
+            self._read_config()
+            self.username = self._config.get('user-account', 'username', raw=True)
+            self.password = self._config.get('user-account', 'password', raw=True)
+            self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
+            self.course_match_rule = re.compile("https://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]")
+            self.driver = self.get_driver()
+            self.course_urls = self.get_course_urls()
         # 登录
         self.login_url = "https://passport.zhihuishu.com/login"
         self.login_js = '''document.getElementsByClassName("wall-sub-btn")[0].click();'''
@@ -28,6 +26,8 @@ class Config:
         self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
         self.remove_assist = '''document.getElementsByClassName("ai-show-icon ai-icon-appear")[0].remove();'''
         self.no_tip = '''document.querySelector(".exploreTip").remove();'''
+        self.no_ai_tip = '''document.querySelector(".aiMsg.once").remove();'''
+        self.no_ai_bot = '''document.querySelector(".ai-helper-Index2").remove()'''
         # 视频元素修改
         self.play_video = '''const video = document.querySelector('video');video.play();'''
         self.volume_none = "document.querySelector('video').volume=0;"
@@ -35,6 +35,14 @@ class Config:
         self.reset_curtime = '''document.querySelector('video').currentTime=0;'''
         # 夜间模式
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
+        # 镜像源
+        self.mirrors = {
+            #"豆瓣": "https://pypi.doubanio.com",
+            "华为": "https://mirrors.huaweicloud.com/repository/pypi",
+            "阿里": "https://mirrors.aliyun.com/pypi",
+            "清华": "https://pypi.tuna.tsinghua.edu.cn",
+            "官方": "https://pypi.org"
+        }
 
     def _read_config(self) -> None:
         try:
@@ -42,10 +50,11 @@ class Config:
         except UnicodeDecodeError:
             self._config.read(self.config_path, encoding='gbk')
 
+
     def get_driver(self) -> str:
         driver = self._config.get('custom-option', 'driver', raw=True)
         if not driver:
-            driver = "Edge"
+            driver = "edge"
         return driver.lower()
 
     def get_autoCaptcha(self) -> bool:

@@ -8,13 +8,13 @@
 
 ------
 **2024/11/5 公告：**
- 据多数issues的反馈来看, 智慧树共享课的网址格式并非固定, 且播放页UI都相同(分为智慧版和普通版)。故在 `stable-3.15.2` 版本中取消了对共享课网址格式的检查，大家可以自行实践脚本的有效性。
-#### 2024/11/1 stable-3.15.1 更新
+ 据多数issues的反馈来看, 智慧树共享课的网址格式并非固定, 且播放页UI都相同(分为智慧版和普通版)。故在 `stable-3.15.2` 及以上版本中取消了对共享课网址格式的检查，大家可以自行实践脚本的有效性。
+#### 2025/2/25 stable-3.15.3 更新
 **此次更新:**
-- 新增对 **"智慧共享课"** 的支持(以fusioncourseh5开头的网址);
-- 新增 **"日志系统"**, 程序运行日志及报错信息将保存至`logs/`目录下;
-- 取消了configs文件里的 `enableRepeat` 字段, 改为自动判断学习或复习模式;
-- 修复了未登录完成导致播放页无限刷新的问题;
+- 修复了`enableAutoCaptcha=True`时依赖库下载失败的问题 [Issue #72](https://github.com/CXRunfree/Autovisor/issues/72)
+- 为下载器添加了多个备份镜像源(阿里, 华为, 豆瓣, 清华, 官方源);
+- 修复了未填账号密码时尝试登录的误操作;
+- 优化了部分代码逻辑
 
 如若此版本存在稳定性bug，请及时提出issue  ~
 
@@ -29,8 +29,7 @@
 这是一个可无人监督的自动化程序，基于微软的Playwright框架，由Python和JavaScript编写而成；相对于常见的油猴脚本，本程序可有效防止被网页检测。核心原理是使浏览器模拟用户的点击操作。
 
 **程序功能:**
-
-- 可以快速登录
+- **支持自动登录**
 - **自动通过滑块验证(可选)**
 - **自动播放和切换下一集**
 - **跳过弹窗和弹出的题目**
@@ -38,8 +37,8 @@
 - **检测视频是否暂停并续播**
 - 检测当前学习进度并后台实时更新
 - 根据当前时间自动设置背景颜色(白昼/暗夜)
-- 加入了定时模拟鼠标滑动功能 (减少被检测到的概率)
 - 完成章节时将提示已刷课时长
+- 各种自定义配置
 
 #### 二、使用须知:
 
@@ -50,23 +49,25 @@
 3.填写配置文件
 
 - 默认启动Edge(win10及以上自带), 也可指定为Chrome
-- 文件里的**EXE_PATH项**可自定义浏览器路径, 但必须精确到**浏览器可执行文件的位置**;
+- 文件里的 **EXE_PATH项** 用于自定义浏览器路径, 但必须精确到**浏览器可执行文件的位置**;
 
 ​    若不填此项, 就会启动位于系统默认位置的浏览器。
 
-​    (不知浏览器的安装路径? 请看下方  **四、常见问题** )
+​    不知浏览器的安装路径? 请看下方  **四、常见问题** 
 
 4.根据文件内的说明填写好配置信息，一定要**保存后**再退出。
 
-**注意: 所有配置项都不加引号.**
+**注意: 所有配置项都不加"引号"**
 
 <img src="https://i-blog.csdnimg.cn/direct/e3f06598535c4b48bc1e8a52eb2d0ef8.png"/>
 
-4.运行 **Autovisor.exe**，会自动打开浏览器，登录界面的滑块验证请**手动完成**，进入网课界面后就能自动刷课了 !
+4.运行 **Autovisor.exe**，会自动打开浏览器，进入网课界面后就能自动刷课了 !
+
+(如果未设置 **enableAutoCaptcha=True**, 则需要**手动完成**登录时的滑块验证.)
 
 ------
 
-#### **三、发行版下载:**
+#### 三、发行版下载:
 
 Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunfree/Autovisor/releases)
 
@@ -91,8 +92,7 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 4.我想自定义要启动的浏览器, 但是找不到装在哪里? 
 
 - 打开你的浏览器, 在地址栏中输入 Chrome://version 回车之后, 如图的"可执行文件目录" 就是浏览器安装目录了。
-
-  <img src="https://img-blog.csdnimg.cn/direct/aec0acdfd3b946069f5edb31f9191591.png">
+  <img src="https://i-blog.csdnimg.cn/blog_migrate/e8fd696257e0b4623a19d4a9e0448bfd.png" alt="img">
 
 5.关于弹题关不掉/程序卡住的问题:
 
@@ -102,6 +102,8 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 ------
 
 **已知Bug:**
+
+- 浏览器版本太新可能导致第一次启动失败, 重启程序才能解决;
 
 - **长时间挂机**有概率弹出人机验证, 程序检测到后会暂停刷课，直到手动验证完成;
 - 若出现其他异常崩溃，请提交issue并附上报错信息；
@@ -114,8 +116,7 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 
 <img src="https://img-blog.csdnimg.cn/direct/2d94a77c4bf643c1bff1712461c4f1bf.png" alt="img" style="zoom: 50%;" />
 
-**作者的CSDN:** [Runfreeone 欢迎关注~](https://blog.csdn.net/Runfreeone)
+**作者的CSDN:** [欢迎关注~](https://blog.csdn.net/Runfreeone)
 
 **注意：本程序只可用于学习和研究计算机原理**
 
-还等什么? 快开始愉快的刷课吧~ !

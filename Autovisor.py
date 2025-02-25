@@ -26,10 +26,11 @@ async def auto_login(config: Config, page: Page, modules=None):
     if "login" not in page.url:
         logger.info("检测到已登录,跳过登录步骤.")
         return
-    await page.locator('#lUsername').fill(config.username)
-    await page.locator('#lPassword').fill(config.password)
-    await page.wait_for_timeout(500)
-    await page.evaluate(config.login_js)
+    if config.username and config.password:
+        await page.locator('#lUsername').fill(config.username)
+        await page.locator('#lPassword').fill(config.password)
+        await page.wait_for_timeout(500)
+        await page.evaluate(config.login_js)
     if config.get_autoCaptcha() and modules:
         await slider_verify(page, modules)
     await page.wait_for_selector(".wall-main", state='hidden')
@@ -199,9 +200,10 @@ async def main(config: Config):
         show_donate("res/QRcode.jpg")
     except Exception as e:
         logger.error(repr(e), line_break=True)
-        logger.write_log(traceback.format_exc())
         if isinstance(e, TargetClosedError):
             logger.error("浏览器被关闭,程序退出.")
+        logger.write_log(traceback.format_exc())
+
     finally:
         # 结束所有协程任务
         await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
@@ -212,7 +214,7 @@ if __name__ == "__main__":
     logger = Logger()
     try:
         logger.info("程序启动中...")
-        config = Config()
+        config = Config("configs.ini")
         if not config.course_urls:
             logger.info("未检测到有效网址或不支持此类网页,请检查配置文件!")
             time.sleep(2)
@@ -231,9 +233,11 @@ if __name__ == "__main__":
             logger.error("浏览器被关闭,程序退出.")
         elif isinstance(e, UnicodeDecodeError):
             logger.error("配置文件编码错误,保存时请选择UTF-8或GBK编码!")
+        elif isinstance(e, TargetClosedError):
+            logger.error("浏览器被关闭,程序退出.")
         else:
             logger.error("系统出错,请检查后重新启动!")
         logger.write_log(traceback.format_exc())
-    finally:
         logger.save()
+    finally:
         input("请按任意键退出...")

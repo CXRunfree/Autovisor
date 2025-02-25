@@ -3,6 +3,7 @@ Releases/
 build/
 dist/
 Res/__init__.py
+.obsidian/
 .idea/
 __pycache__/
 .vscode/

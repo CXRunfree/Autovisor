@@ -3,6 +3,7 @@ import random
 from playwright.async_api import Page, TimeoutError
 from modules.utils import get_video_attr
 
+
 # 视频区域内移动鼠标
 async def move_mouse(page: Page):
     try:
