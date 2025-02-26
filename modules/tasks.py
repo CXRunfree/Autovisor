@@ -32,7 +32,7 @@ async def play_video(page: Page) -> None:
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
             await page.wait_for_selector("video", state="attached", timeout=1000)
             paused = await page.evaluate("document.querySelector('video').paused")
             if paused:
@@ -86,10 +86,10 @@ async def wait_for_verify(page: Page, event_loop) -> None:
         try:
             await asyncio.sleep(3)
             await page.wait_for_selector(".yidun_modal__title", state="attached", timeout=1000)
-            logger.warn("检测到安全验证,请手动完成验证...", line_break=True)
+            logger.warn("检测到安全验证,请手动完成验证...", shift=True)
             await page.wait_for_selector(".yidun_modal__title", state="hidden", timeout=24 * 3600 * 1000)
             event_loop.set()
-            logger.info("安全验证已完成.", line_break=True)
+            logger.info("安全验证已完成.", shift=True)
             await asyncio.sleep(30)  # 较长时间内不会再次触发验证
         except TargetClosedError:
             logger.write_log("浏览器已关闭,安全验证模块已下线.\n")

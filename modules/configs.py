@@ -29,6 +29,7 @@ class Config:
         self.no_ai_tip = '''document.querySelector(".aiMsg.once").remove();'''
         self.no_ai_bot = '''document.querySelector(".ai-helper-Index2").remove()'''
         # 视频元素修改
+        self.remove_pause = "document.querySelector('video').pause = ()=>{}"
         self.play_video = '''const video = document.querySelector('video');video.play();'''
         self.volume_none = "document.querySelector('video').volume=0;"
         self.set_none_icon = '''document.querySelector(".volumeBox").classList.add("volumeNone")'''

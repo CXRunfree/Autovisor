@@ -1,5 +1,6 @@
 # encoding=utf-8
 import asyncio
+import os
 import time
 import traceback
 import sys
@@ -21,14 +22,16 @@ event_loop_answer = asyncio.Event()
 
 
 async def auto_login(config: Config, page: Page, modules=None):
-    await page.goto(config.login_url)
-    await page.wait_for_load_state("load")
+    await page.goto(config.login_url, wait_until="commit")
     if "login" not in page.url:
         logger.info("检测到已登录,跳过登录步骤.")
         return
     if config.username and config.password:
+        await page.wait_for_selector("#lUsername", state="attached")
+        await page.wait_for_selector("#lPassword", state="attached")
         await page.locator('#lUsername').fill(config.username)
         await page.locator('#lPassword').fill(config.password)
+        await page.wait_for_selector(".wall-sub-btn", state="attached")
         await page.wait_for_timeout(500)
         await page.evaluate(config.login_js)
     if config.get_autoCaptcha() and modules:
@@ -38,12 +41,11 @@ async def auto_login(config: Config, page: Page, modules=None):
 
 async def init_page(p: Playwright, config: Config) -> tuple[Page, Browser]:
     driver = "msedge" if config.driver == "edge" else config.driver
-
     logger.info(f"正在启动{config.driver}浏览器...")
     browser = await p.chromium.launch(
         channel=driver,
         headless=False,
-        executable_path=config.exe_path if config.exe_path else None
+        executable_path=config.exe_path if config.exe_path else None,
     )
     page = await browser.new_page()
     logger.write_log(f"{config.driver}浏览器启动完成.\n")
@@ -126,6 +128,9 @@ async def working_loop(page: Page, is_new_version=False):
         title = await get_lesson_name(page)
         logger.info(f"正在学习:{title}")
         page.set_default_timeout(10000)
+        # 移除视频暂停功能
+        await page.wait_for_selector("video", state="attached")
+        await page.evaluate(config.remove_pause)
         if learning:
             await learning_loop(page, start_time)
         else:
@@ -142,16 +147,16 @@ async def check_time_limit(page: Page, start_time, all_class, title) -> bool:
     page.set_default_timeout(24 * 3600 * 1000)
     time_period = (time.time() - start_time) / 60
     if 0 < config.limitMaxTime <= time_period:
-        logger.info(f"当前课程已达时限:{config.limitMaxTime}min", line_break=True)
+        logger.info(f"当前课程已达时限:{config.limitMaxTime}min", shift=True)
         logger.info("即将进入下门课程!")
         reachTimeLimit = True
     else:
         class_name = await all_class[-1].get_attribute('class')
         if "current_play" in class_name:
-            logger.info("已学完本课程全部内容!", line_break=True)
+            logger.info("已学完本课程全部内容!", shift=True)
             print("==" * 10)
         else:
-            logger.info(f"\"{title}\" 已完成!", line_break=True)
+            logger.info(f"\"{title}\" 已完成!", shift=True)
             logger.info(f"本次课程已学习:{time_period:.1f} min")
     return reachTimeLimit
 
@@ -184,8 +189,8 @@ async def main(config: Config):
                 print("==" * 10)
                 is_new_version = "fusioncourseh5" in course_url
                 logger.info("正在加载播放页...")
-                await page.goto(course_url)
-                # 关闭弹窗,优化页面体验
+                await page.goto(course_url, wait_until="commit")
+                # 关闭弹窗,优化页面结构
                 await optimize_page(page, config, is_new_version)
                 logger.info("页面优化完成!")
                 # 获取课程标题
@@ -198,13 +203,15 @@ async def main(config: Config):
         print("==" * 10)
         logger.info("所有课程已学习完毕!")
         show_donate("res/QRcode.jpg")
-    except Exception as e:
-        logger.error(repr(e), line_break=True)
-        if isinstance(e, TargetClosedError):
+    except TargetClosedError as e:
+        if "BrowserType.launch" in repr(e):
+            logger.error("浏览器启动失败,请重新启动程序!")
+        else:
             logger.error("浏览器被关闭,程序退出.")
-        logger.write_log(traceback.format_exc())
-
+    except Exception as e:
+        logger.error(repr(e), shift=True)
     finally:
+        logger.write_log(traceback.format_exc())
         # 结束所有协程任务
         await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
 
@@ -221,23 +228,17 @@ if __name__ == "__main__":
             sys.exit(-1)
         asyncio.run(main(config))
     except Exception as e:
-        logger.error(repr(e), line_break=True)
+        logger.error(repr(e), shift=True)
         logger.write_log(traceback.format_exc())
         if isinstance(e, KeyError):
             logger.error(f"配置文件错误!")
-        elif isinstance(e, UserWarning):
-            logger.error(f"是不是忘记填账号密码了?")
         elif isinstance(e, FileNotFoundError):
             logger.error(f"依赖文件缺失: {e.filename},请重新安装程序!")
-        elif isinstance(e, TargetClosedError):
-            logger.error("浏览器被关闭,程序退出.")
         elif isinstance(e, UnicodeDecodeError):
             logger.error("配置文件编码错误,保存时请选择UTF-8或GBK编码!")
-        elif isinstance(e, TargetClosedError):
-            logger.error("浏览器被关闭,程序退出.")
         else:
             logger.error("系统出错,请检查后重新启动!")
         logger.write_log(traceback.format_exc())
         logger.save()
     finally:
-        input("请按任意键退出...")
+        os.system("pause")

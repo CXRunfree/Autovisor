@@ -30,22 +30,22 @@ class Logger:
             f.write(self.text)
         print(f"日志文件已保存至: {self.filename}")
 
-    def info(self, msg, line_break=False):
-        if line_break:
+    def info(self, msg, shift=False):
+        if shift:
             print(f"\n\033[32m[INFO]\033[0m {msg}")
         else:
             print(f"\033[32m[INFO]\033[0m {msg}")
         self.write_log(f"[INFO] {msg}\n")
 
-    def warn(self, msg, line_break=False):
-        if line_break:
+    def warn(self, msg, shift=False):
+        if shift:
             print(f"\n\033[33m[WARN]\033[0m {msg}")
         else:
             print(f"\033[33m[WARN]\033[0m {msg}")
         self.write_log(f"[WARN] {msg}\n")
 
-    def error(self, msg, line_break=False):
-        if line_break:
+    def error(self, msg, shift=False):
+        if shift:
             print(f"\n\033[31m[ERROR]\033[0m {msg}")
         else:
             print(f"\033[31m[ERROR]\033[0m {msg}")
