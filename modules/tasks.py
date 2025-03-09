@@ -15,7 +15,7 @@ async def video_optimize(page: Page, config: Config) -> None:
             await page.wait_for_selector("video", state="attached", timeout=3000)
             volume = await get_video_attr(page, "volume")
             rate = await get_video_attr(page, "playbackRate")
-            if volume != 0:
+            if config.soundOff and volume != 0:
                 await page.evaluate(config.volume_none)
                 await page.evaluate(config.set_none_icon)
             if rate != config.limitSpeed:

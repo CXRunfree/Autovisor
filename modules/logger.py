@@ -16,7 +16,7 @@ class Logger:
         return cls._instance
 
     def _init(self):
-        os.makedirs("logs", exist_ok=True)   # 创建日志文件夹
+        os.makedirs("logs", exist_ok=True)  # 创建日志文件夹
         new_index = len(os.listdir("logs")) + 1
         self.filename = f"logs/Log{new_index}.txt"
         self.text = ""
@@ -25,10 +25,11 @@ class Logger:
         date = time.strftime("%H:%M:%S", time.localtime())
         self.text += f"[{date}] {msg}"
 
-    def save(self):
+    def save(self, inform=True):
         with open(self.filename, "w", encoding="utf-8") as f:
             f.write(self.text)
-        print(f"日志文件已保存至: {self.filename}")
+        if inform:
+            print(f"日志文件已保存至: {self.filename}")
 
     def info(self, msg, shift=False):
         if shift:

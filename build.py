@@ -8,6 +8,7 @@ os.system(
     "-c "
     "-i ./res/zhs.ico "
     "--onedir "
+    "--contents-directory=internal "
     f"--name={name} "
     "./Autovisor.py "
     "--exclude-module cv2 "

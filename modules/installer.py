@@ -6,7 +6,6 @@ import zipfile
 import os
 import requests
 from importlib import import_module
-from requests import HTTPError
 from modules.progress import show_progress
 from modules.logger import Logger
 from modules.configs import Config
@@ -17,17 +16,20 @@ logger = Logger()
 
 def test_mirrors():
     for name, url in config.mirrors.items():
-        logger.info(f"正在测试 {name}镜像源...")
+        logger.info(f"正在测试 {name} 镜像源...")
         try:
-            response = requests.get(url + "/simple/0")
+            response = requests.get(url + "/simple/0", timeout=5)  # 设置超时，避免卡住
             if response.status_code == 200:
-                logger.info(f"{name}镜像源 连接成功！")
+                logger.info(f"{name} 镜像源 连接成功！")
                 return name, url
             else:
-                logger.error(f"{name}镜像源 连接失败！")
-        except HTTPError:
-            logger.error(f"{name}镜像源 连接失败！")
+                logger.error(f"{name} 镜像源 连接失败（状态码 {response.status_code}）！")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"{name} 镜像源 连接失败：{e}")
             continue
+
+    logger.error("所有镜像源都不可用！")
+    return None, None
 
 
 def extract_whl(whl_file, extract_to):
@@ -102,26 +104,22 @@ def is_installed(package, version):
         return None, False
 
 
-def install_package(package, version):
-    mirror_name, base_url = test_mirrors()
+def install_package(package, version, mirror_name, base_url):
     alias = mapping[package]
-    # 如果导入失败，则下载安装 .whl 文件
-    logger.info(f"{package}-{version} 未安装,正在开始下载...")
+    logger.info(f"{package}-{version} 未安装，开始下载...")
+
     try:
         wheel_path = download_wheel(mirror_name, base_url, package, version)
-        # 解压 .whl 文件
         extract_whl(wheel_path, "./res")
-        logger.info(f"{package}-{version} 安装完成!\n")
-        # 删除安装包
-        os.remove(wheel_path)
+        logger.info(f"{package}-{version} 安装完成!")
+
+        os.remove(wheel_path)  # 清理下载的 .whl 文件
         return import_module(alias)
-    except HTTPError as e:
-        logger.write_log(f"[ERROR]{repr(e)}\n{traceback.format_exc()}")
-        logger.error(f"{package}-{version} 下载失败!\n")
-        return None
+
     except Exception as e:
-        logger.write_log(f"[ERROR]{repr(e)}\n{traceback.format_exc()}")
-        logger.error(f"{package}-{version} 安装失败!\n")
+        error_message = f"{package}-{version} 处理失败！\n错误详情: {repr(e)}"
+        logger.write_log(f"[ERROR] {error_message}\n{traceback.format_exc()}")
+        logger.error(error_message)
         return None
 
 
@@ -129,11 +127,21 @@ def install_package(package, version):
 def start():
     modules = []
     sys.path.append("./res")
+    mirror_name, base_url = None, None  # 避免重复测试镜像
     for package, version in packages.items():
         module, exist = is_installed(package, version)
         if not exist:
-            module = install_package(package, version)
+            if not mirror_name:  # 仅在首次遇到导入失败时测试镜像
+                mirror_name, base_url = test_mirrors()
+                if not mirror_name:  # 如果所有镜像都失败，直接退出
+                    logger.error("没有可用的镜像源，程序终止!")
+                    sys.exit(-1)
+            module = install_package(package, version, mirror_name, base_url)
+            if not module:
+                logger.save()
+                sys.exit(-1)  # 下载或安装失败，立即退出
         modules.append(module)
+
     return modules
 
 

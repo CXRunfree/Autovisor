@@ -28,11 +28,15 @@ async def optimize_page(page: Page, config: Config, is_new_version=False) -> Non
             hour = time.localtime().tm_hour
             if hour >= 18 or hour < 7:
                 await evaluate_js(page, config.night_js, ".Patternbtn-div", 1500)
-            await evaluate_js(page, config.remove_assist, ".ai-show-icon.ai-icon-appear", 1500)
-            await evaluate_js(page, config.no_ai_tip, ".aiMsg.once", 1500)
-            await evaluate_js(page, config.no_ai_bot, ".ai-helper-Index2", 1500)
-            await page.wait_for_selector(".exploreTip", timeout=1500)
-            await evaluate_js(page, config.no_tip, 1500)
+            header_tip = page.locator(".exploreTip").first
+            await header_tip.evaluate("el=>el.remove()")
+            ai_bot = page.locator(".ai-helper-Index2").first
+            await ai_bot.evaluate("el=>el.remove()")
+            ai_msg = page.locator(".aiMsg.once")
+            if await ai_msg.count() > 0 or ai_msg.is_visible():
+                await ai_msg.evaluate("el=>el.remove()")
+            logger.info("页面优化完成!")
+
     except Exception as e:
         logger.write_log(f"Exec optimize_page failed. Error:{repr(e)}\n")
         logger.write_log(traceback.format_exc())

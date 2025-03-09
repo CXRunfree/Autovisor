@@ -10,24 +10,22 @@ class Config:
             self._config = configparser.ConfigParser()
             # 读取用户常量
             self._read_config()
+            self.driver = self.get_driver()
+            self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
             self.username = self._config.get('user-account', 'username', raw=True)
             self.password = self._config.get('user-account', 'password', raw=True)
-            self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
+            self.enableAutoCaptcha = self.get_bool_field('custom-option', 'enableAutoCaptcha')
+            self.soundOff = self.get_bool_field('custom-option', 'soundOff')
             self.course_match_rule = re.compile("https://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]")
-            self.driver = self.get_driver()
             self.course_urls = self.get_course_urls()
         # 登录
         self.login_url = "https://passport.zhihuishu.com/login"
-        self.login_js = '''document.getElementsByClassName("wall-sub-btn")[0].click();'''
         self.block_js = '''return document.getElementsByClassName("yidun_jigsaw")[0].src'''
         self.bg_js = '''return document.getElementsByClassName("yidun_bg-img")[0].src'''
         # 弹窗
         self.pop_js = '''document.getElementsByClassName("iconfont iconguanbi")[0].click();'''
         self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
-        self.remove_assist = '''document.getElementsByClassName("ai-show-icon ai-icon-appear")[0].remove();'''
-        self.no_tip = '''document.querySelector(".exploreTip").remove();'''
-        self.no_ai_tip = '''document.querySelector(".aiMsg.once").remove();'''
-        self.no_ai_bot = '''document.querySelector(".ai-helper-Index2").remove()'''
+
         # 视频元素修改
         self.remove_pause = "document.querySelector('video').pause = ()=>{}"
         self.play_video = '''const video = document.querySelector('video');video.play();'''
@@ -51,16 +49,15 @@ class Config:
         except UnicodeDecodeError:
             self._config.read(self.config_path, encoding='gbk')
 
-
     def get_driver(self) -> str:
         driver = self._config.get('custom-option', 'driver', raw=True)
         if not driver:
             driver = "edge"
         return driver.lower()
 
-    def get_autoCaptcha(self) -> bool:
-        autoCaptcha = self._config.get('custom-option', 'enableAutoCaptcha', raw=True).lower()
-        if autoCaptcha == "true":
+    def get_bool_field(self, section: str, option: str) -> bool:
+        field = self._config.get(section, option, raw=True).lower()
+        if field == "true":
             return True
         else:
             return False

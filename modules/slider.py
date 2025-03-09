@@ -5,7 +5,11 @@ from playwright.async_api import Page
 from playwright._impl._errors import TimeoutError
 from modules.logger import Logger
 
+# 定义全局变量
+cv2: ModuleType
+np: ModuleType
 logger = Logger()
+
 
 # 下载图片并转换为OpenCV格式
 async def download_image(url):
@@ -81,9 +85,6 @@ async def move_slider(page: Page, distance, offset=32):
         await page.mouse.move(box["x"] + sum(move_list[:i]) + offset, box["y"])
     await page.mouse.up()
 
-# 定义全局变量
-cv2 = None
-np = None
 
 async def slider_verify(page: Page, modules: list[ModuleType]):
     global cv2, np

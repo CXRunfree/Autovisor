@@ -21,7 +21,7 @@ event_loop_verify = asyncio.Event()
 event_loop_answer = asyncio.Event()
 
 
-async def auto_login(config: Config, page: Page, modules=None):
+async def auto_login(page: Page, modules=None):
     await page.goto(config.login_url, wait_until="commit")
     if "login" not in page.url:
         logger.info("检测到已登录,跳过登录步骤.")
@@ -33,13 +33,13 @@ async def auto_login(config: Config, page: Page, modules=None):
         await page.locator('#lPassword').fill(config.password)
         await page.wait_for_selector(".wall-sub-btn", state="attached")
         await page.wait_for_timeout(500)
-        await page.evaluate(config.login_js)
-    if config.get_autoCaptcha() and modules:
+        await page.locator(".wall-sub-btn").first.click()
+    if config.enableAutoCaptcha and modules:
         await slider_verify(page, modules)
     await page.wait_for_selector(".wall-main", state='hidden')
 
 
-async def init_page(p: Playwright, config: Config) -> tuple[Page, Browser]:
+async def init_page(p: Playwright) -> tuple[Page, Browser]:
     driver = "msedge" if config.driver == "edge" else config.driver
     logger.info(f"正在启动{config.driver}浏览器...")
     browser = await p.chromium.launch(
@@ -161,59 +161,49 @@ async def check_time_limit(page: Page, start_time, all_class, title) -> bool:
     return reachTimeLimit
 
 
-async def main(config: Config):
+async def main():
     modules, tasks = [], []
-    if config.get_autoCaptcha():
+    if config.enableAutoCaptcha:
         print("===== Install log =====")
-        logger.info("开始下载依赖库...")
+        logger.info("正在检查依赖库...")
         modules = installer.start()
-        logger.info("所有依赖库下载完成!")
-    try:
-        print("===== Runtime Log =====")
-        async with async_playwright() as p:
-            page, browser = await init_page(p, config)
-            # 进行登录
-            if not config.username or not config.password:
-                logger.info("请手动填写账号密码...")
-            logger.info("正在等待登录完成...")
-            # 先启动人机验证协程
-            verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
-            await auto_login(config, page, modules)
-            # 启动协程任务
-            video_optimize_task = asyncio.create_task(video_optimize(page, config))
-            skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
-            play_video_task = asyncio.create_task(play_video(page))
-            tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task])
-            # 遍历所有课程,加载网页
-            for course_url in config.course_urls:
-                print("==" * 10)
-                is_new_version = "fusioncourseh5" in course_url
-                logger.info("正在加载播放页...")
-                await page.goto(course_url, wait_until="commit")
-                # 关闭弹窗,优化页面结构
-                await optimize_page(page, config, is_new_version)
-                logger.info("页面优化完成!")
-                # 获取课程标题
-                if not is_new_version:
-                    title_selector = await page.wait_for_selector(".source-name")
-                    course_title = await title_selector.text_content()
-                    logger.info(f"当前课程:<<{course_title}>>")
-                # 启动课程主循环
-                await working_loop(page, is_new_version=is_new_version)
-        print("==" * 10)
-        logger.info("所有课程已学习完毕!")
-        show_donate("res/QRcode.jpg")
-    except TargetClosedError as e:
-        if "BrowserType.launch" in repr(e):
-            logger.error("浏览器启动失败,请重新启动程序!")
-        else:
-            logger.error("浏览器被关闭,程序退出.")
-    except Exception as e:
-        logger.error(repr(e), shift=True)
-    finally:
-        logger.write_log(traceback.format_exc())
-        # 结束所有协程任务
-        await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
+        logger.info("所有依赖库安装完成!")
+    print("===== Runtime Log =====")
+    async with async_playwright() as p:
+        page, browser = await init_page(p)
+        # 进行登录
+        if not config.username or not config.password:
+            logger.info("请手动填写账号密码...")
+        logger.info("正在等待登录完成...")
+        # 先启动人机验证协程
+        verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
+        await auto_login(page, modules)
+        # 启动协程任务
+        video_optimize_task = asyncio.create_task(video_optimize(page, config))
+        skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
+        play_video_task = asyncio.create_task(play_video(page))
+        tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task])
+        # 遍历所有课程,加载网页
+        for course_url in config.course_urls:
+            print("==" * 10)
+            is_new_version = "fusioncourseh5" in course_url
+            logger.info("正在加载播放页...")
+            await page.goto(course_url, wait_until="commit")
+            # 关闭弹窗,优化页面结构
+            await optimize_page(page, config, is_new_version)
+            logger.info("页面优化完成!")
+            # 获取课程标题
+            if not is_new_version:
+                title_selector = await page.wait_for_selector(".source-name")
+                course_title = await title_selector.text_content()
+                logger.info(f"当前课程:<<{course_title}>>")
+            # 启动课程主循环
+            await working_loop(page, is_new_version=is_new_version)
+    print("==" * 10)
+    logger.info("所有课程已学习完毕!")
+    show_donate("res/QRcode.jpg")
+    # 结束所有协程任务
+    await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
 
 
 if __name__ == "__main__":
@@ -226,7 +216,13 @@ if __name__ == "__main__":
             logger.info("未检测到有效网址或不支持此类网页,请检查配置文件!")
             time.sleep(2)
             sys.exit(-1)
-        asyncio.run(main(config))
+        asyncio.run(main())
+    except TargetClosedError as e:
+        logger.write_log(traceback.format_exc())
+        if "BrowserType.launch" in repr(e):
+            logger.error("浏览器启动失败,请重新启动程序!")
+        else:
+            logger.error("浏览器被关闭,程序退出.")
     except Exception as e:
         logger.error(repr(e), shift=True)
         logger.write_log(traceback.format_exc())
@@ -238,7 +234,6 @@ if __name__ == "__main__":
             logger.error("配置文件编码错误,保存时请选择UTF-8或GBK编码!")
         else:
             logger.error("系统出错,请检查后重新启动!")
-        logger.write_log(traceback.format_exc())
-        logger.save()
     finally:
+        logger.save()
         os.system("pause")
