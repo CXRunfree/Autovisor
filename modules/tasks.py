@@ -51,6 +51,8 @@ async def skip_questions(page: Page, event_loop) -> None:
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
+            if "hike.zhihuishu.com" in page.url:
+                break
             await asyncio.sleep(0.7)
             await page.wait_for_selector(".el-dialog", state="attached", timeout=1000)
             total_ques = await page.query_selector_all(".number")
@@ -73,6 +75,8 @@ async def skip_questions(page: Page, event_loop) -> None:
                 not_finish_close = await page.query_selector(".el-dialog")
                 if not_finish_close:
                     await page.press(".el-dialog", "Escape", timeout=1000)
+            elif "hike.zhihuishu.com" in page.url:
+                break
             else:
                 not_finish_close = await page.query_selector(".el-message-box__headerbtn")
                 if not_finish_close:

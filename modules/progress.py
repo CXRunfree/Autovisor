@@ -2,6 +2,9 @@
 import random
 from playwright.async_api import Page, TimeoutError
 from modules.utils import get_video_attr
+from modules.logger import Logger
+
+logger = Logger()
 
 
 # 视频区域内移动鼠标
@@ -22,18 +25,25 @@ async def move_mouse(page: Page):
 
 
 # 获取课程进度
-async def get_course_progress(page: Page, is_new_version=False):
+async def get_course_progress(page: Page, is_new_version=False, is_hike_class=False):
     curtime = "0%"
     await move_mouse(page)
-    cur_play = await page.query_selector(".current_play")
-    progress = await cur_play.query_selector(".progress-num")
+    if is_hike_class:
+        cur_play = await page.query_selector(".file-item.active")
+        progress = await cur_play.query_selector(".rate")
+    else:
+        cur_play = await page.query_selector(".current_play")
+        progress = await cur_play.query_selector(".progress-num")
     if not progress:
-        if is_new_version:
-            progress_ele = await cur_play.query_selector(".progress-num")
-            progress = await progress_ele.text_content()
-            finish = progress == "100%"
+        if is_hike_class != True:
+            if is_new_version:
+                progress_ele = await cur_play.query_selector(".progress-num")
+                progress = await progress_ele.text_content()
+                finish = progress == "100%"
+            else:
+                finish = await cur_play.query_selector(".time_icofinish")
         else:
-            finish = await cur_play.query_selector(".time_icofinish")
+            finish = await cur_play.query_selector(".icon-finish")
         if finish:
             curtime = "100%"
     else:
