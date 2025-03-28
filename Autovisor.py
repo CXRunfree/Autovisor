@@ -141,14 +141,18 @@ async def working_loop(page: Page, is_new_version=False, is_hike_class=False):
             await learning_loop(page, start_time, is_new_version, is_hike_class)
         else:
             await review_loop(page, start_time, is_hike_class)
-        if "current_play" in await all_class[cur_index].get_attribute('class'):
-            cur_index += 1
-        reachTimeLimit = await check_time_limit(page, start_time, all_class, title)
+        if is_hike_class == False:
+            if "current_play" in await all_class[cur_index].get_attribute('class'):
+                cur_index += 1
+        else:
+            if "active" in await all_class[cur_index].get_attribute('class'):
+                cur_index += 1
+        reachTimeLimit = await check_time_limit(page, start_time, all_class, title, is_hike_class)
         if reachTimeLimit:
             return
 
 
-async def check_time_limit(page: Page, start_time, all_class, title) -> bool:
+async def check_time_limit(page: Page, start_time, all_class, title, is_hike_class) -> bool:
     reachTimeLimit = False
     page.set_default_timeout(24 * 3600 * 1000)
     time_period = (time.time() - start_time) / 60
@@ -158,12 +162,20 @@ async def check_time_limit(page: Page, start_time, all_class, title) -> bool:
         reachTimeLimit = True
     else:
         class_name = await all_class[-1].get_attribute('class')
-        if "current_play" in class_name:
-            logger.info("已学完本课程全部内容!", shift=True)
-            print("==" * 10)
+        if is_hike_class:
+            if "active" in class_name:
+                logger.info("已学完本课程全部内容!", shift=True)
+                print("==" * 10)
+            else:
+                logger.info(f"\"{title}\" 已完成!", shift=True)
+                logger.info(f"本次课程已学习:{time_period:.1f} min")
         else:
-            logger.info(f"\"{title}\" 已完成!", shift=True)
-            logger.info(f"本次课程已学习:{time_period:.1f} min")
+            if "current_play" in class_name:
+                logger.info("已学完本课程全部内容!", shift=True)
+                print("==" * 10)
+            else:
+                logger.info(f"\"{title}\" 已完成!", shift=True)
+                logger.info(f"本次课程已学习:{time_period:.1f} min")
     return reachTimeLimit
 
 
