@@ -26,6 +26,7 @@ async def auto_login(page: Page, modules=None):
     if "login" not in page.url:
         logger.info("检测到已登录,跳过登录步骤.")
         return
+    await page.wait_for_selector(".wall-main", state='attached') # 等待登陆界面加载
     if config.username and config.password:
         await page.wait_for_selector("#lUsername", state="attached")
         await page.wait_for_selector("#lPassword", state="attached")
