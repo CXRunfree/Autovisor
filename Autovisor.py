@@ -4,6 +4,7 @@ import os
 import time
 import traceback
 import sys
+import re
 from playwright.async_api import async_playwright, Playwright, Page, Browser
 from playwright.async_api import TimeoutError
 from playwright._impl._errors import TargetClosedError
@@ -26,6 +27,7 @@ async def auto_login(page: Page, modules=None):
     if "login" not in page.url:
         logger.info("检测到已登录,跳过登录步骤.")
         return
+    await page.wait_for_selector(".wall-main", state='attached') # 等待登陆界面加载
     if config.username and config.password:
         await page.wait_for_selector("#lUsername", state="attached")
         await page.wait_for_selector("#lPassword", state="attached")
@@ -196,6 +198,8 @@ async def main():
         # 先启动人机验证协程
         verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
         await auto_login(page, modules)
+        # 拦截验证码请求
+        await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
         # 启动协程任务
         video_optimize_task = asyncio.create_task(video_optimize(page, config))
         skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
