@@ -66,15 +66,15 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
     return page, browser
 
 
-async def learning_loop(page: Page, start_time):
-    cur_time = await get_course_progress(page)
+async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_class=False):
+    cur_time = await get_course_progress(page, is_new_version, is_hike_class)
     while cur_time != "100%":
         try:
             limit_time = config.limitMaxTime
             time_period = (time.time() - start_time) / 60
             if 0 < limit_time <= time_period:
                 break
-            cur_time = await get_course_progress(page)
+            cur_time = await get_course_progress(page, is_new_version, is_hike_class)
             show_course_progress(desc="完成进度:", cur_time=cur_time)
             await asyncio.sleep(0.5)
         except TimeoutError as e:
@@ -86,7 +86,7 @@ async def learning_loop(page: Page, start_time):
                 logger.warn(repr(e))
 
 
-async def review_loop(page: Page, start_time):
+async def review_loop(page: Page, start_time, is_hike_class=False):
     total_time = await get_video_attr(page, "duration")
     await page.evaluate(config.reset_curtime)  # 重置视频播放时间
     while True:
@@ -109,40 +109,50 @@ async def review_loop(page: Page, start_time):
                 logger.warn(repr(e))
 
 
-async def working_loop(page: Page, is_new_version=False):
+async def working_loop(page: Page, is_new_version=False, is_hike_class=False):
     # 获取所有课程元素
-    await page.wait_for_selector(".clearfix.video", state="attached")
-    to_learn_class = await get_filtered_class(page, is_new_version)
+    if is_hike_class:
+        await page.wait_for_selector(".file-item", state="attached")
+    else:
+        await page.wait_for_selector(".clearfix.video", state="attached")
+    to_learn_class = await get_filtered_class(page, is_new_version, is_hike_class)
     learning = True if len(to_learn_class) > 0 else False
     if learning:
         all_class = to_learn_class
     else:
-        all_class = await get_filtered_class(page, is_new_version, include_all=True)
+        all_class = await get_filtered_class(page, is_new_version, is_hike_class, include_all=True)
     start_time = time.time()
     cur_index = 0
 
     while cur_index < len(all_class):
         await all_class[cur_index].click()
-        await page.wait_for_selector(".current_play", state="attached")
+        if is_hike_class:
+            await page.wait_for_selector(".file-item.active", state="attached")
+        else:
+            await page.wait_for_selector(".current_play", state="attached")
         await page.wait_for_timeout(1000)
-        title = await get_lesson_name(page)
+        title = await get_lesson_name(page, is_hike_class)
         logger.info(f"正在学习:{title}")
         page.set_default_timeout(10000)
         # 移除视频暂停功能
         await page.wait_for_selector("video", state="attached")
         await page.evaluate(config.remove_pause)
         if learning:
-            await learning_loop(page, start_time)
+            await learning_loop(page, start_time, is_new_version, is_hike_class)
         else:
-            await review_loop(page, start_time)
-        if "current_play" in await all_class[cur_index].get_attribute('class'):
-            cur_index += 1
-        reachTimeLimit = await check_time_limit(page, start_time, all_class, title)
+            await review_loop(page, start_time, is_hike_class)
+        if is_hike_class == False:
+            if "current_play" in await all_class[cur_index].get_attribute('class'):
+                cur_index += 1
+        else:
+            if "active" in await all_class[cur_index].get_attribute('class'):
+                cur_index += 1
+        reachTimeLimit = await check_time_limit(page, start_time, all_class, title, is_hike_class)
         if reachTimeLimit:
             return
 
 
-async def check_time_limit(page: Page, start_time, all_class, title) -> bool:
+async def check_time_limit(page: Page, start_time, all_class, title, is_hike_class) -> bool:
     reachTimeLimit = False
     page.set_default_timeout(24 * 3600 * 1000)
     time_period = (time.time() - start_time) / 60
@@ -152,12 +162,20 @@ async def check_time_limit(page: Page, start_time, all_class, title) -> bool:
         reachTimeLimit = True
     else:
         class_name = await all_class[-1].get_attribute('class')
-        if "current_play" in class_name:
-            logger.info("已学完本课程全部内容!", shift=True)
-            print("==" * 10)
+        if is_hike_class:
+            if "active" in class_name:
+                logger.info("已学完本课程全部内容!", shift=True)
+                print("==" * 10)
+            else:
+                logger.info(f"\"{title}\" 已完成!", shift=True)
+                logger.info(f"本次课程已学习:{time_period:.1f} min")
         else:
-            logger.info(f"\"{title}\" 已完成!", shift=True)
-            logger.info(f"本次课程已学习:{time_period:.1f} min")
+            if "current_play" in class_name:
+                logger.info("已学完本课程全部内容!", shift=True)
+                print("==" * 10)
+            else:
+                logger.info(f"\"{title}\" 已完成!", shift=True)
+                logger.info(f"本次课程已学习:{time_period:.1f} min")
     return reachTimeLimit
 
 
@@ -187,18 +205,23 @@ async def main():
         for course_url in config.course_urls:
             print("==" * 10)
             is_new_version = "fusioncourseh5" in course_url
+            is_hike_class = "hike.zhihuishu.com" in course_url # 判断是否为翻转课
             logger.info("正在加载播放页...")
             await page.goto(course_url, wait_until="commit")
             # 关闭弹窗,优化页面结构
-            await optimize_page(page, config, is_new_version)
+            await optimize_page(page, config, is_new_version, is_hike_class)
             logger.info("页面优化完成!")
             # 获取课程标题
-            if not is_new_version:
+            if not is_new_version and is_hike_class == False:
                 title_selector = await page.wait_for_selector(".source-name")
                 course_title = await title_selector.text_content()
                 logger.info(f"当前课程:<<{course_title}>>")
+            if is_hike_class:
+                title_selector = await page.wait_for_selector(".course-name")
+                course_title = await title_selector.text_content()
+                logger.info(f"当前课程:<<{course_title}>>， 是翻转课哎。")
             # 启动课程主循环
-            await working_loop(page, is_new_version=is_new_version)
+            await working_loop(page, is_new_version=is_new_version, is_hike_class=is_hike_class)
     print("==" * 10)
     logger.info("所有课程已学习完毕!")
     show_donate("res/QRcode.jpg")
