@@ -8,13 +8,25 @@ from modules.logger import Logger
 
 logger = Logger()
 
-async def evaluate_on_element(page: Page, selector=None, js: str = None, timeout: float = None,
+
+async def evaluate_js(page: Page, wait_selector, js: str, timeout=None, is_hike_class=False) -> None:
+    try:
+        if wait_selector and is_hike_class is False:
+            await page.wait_for_selector(wait_selector, timeout=timeout)
+        if is_hike_class is False:
+            await page.evaluate(js)
+    except Exception as e:
+        logger.write_log(f"Exec JS failed: {js} Selector:{wait_selector} Error:{repr(e)}\n")
+        logger.write_log(traceback.format_exc())
+        return
+
+
+async def evaluate_on_element(page: Page, selector: str, js: str, timeout: float = None,
                               is_hike_class=False) -> None:
     try:
         if selector and is_hike_class is False:
             element = page.locator(selector).first
             await element.evaluate(js, timeout=timeout)
-            logger.write_log(f"Exec JS succeeded: Selector:{selector} JS:{js}\n")
     except Exception as e:
         logger.write_log(f"Exec JS failed: Selector:{selector} JS:{js} Error:{repr(e)}\n")
         logger.write_log(traceback.format_exc())
@@ -24,7 +36,7 @@ async def evaluate_on_element(page: Page, selector=None, js: str = None, timeout
 async def optimize_page(page: Page, config: Config, is_new_version=False, is_hike_class=False) -> None:
     try:
         #await page.wait_for_load_state("domcontentloaded")
-        await evaluate_on_element(page, ".iconfont.iconguanbi", "el=>el.click()", timeout=1500)
+        await evaluate_js(page, ".studytime-div", config.pop_js, None, is_hike_class)
         if not is_new_version:
             if not is_hike_class:
                 hour = time.localtime().tm_hour
