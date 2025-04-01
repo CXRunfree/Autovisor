@@ -46,7 +46,7 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
     logger.info(f"正在启动{config.driver}浏览器...")
     browser = await p.chromium.launch(
         channel=driver,
-        headless=True,
+        headless=False,
         executable_path=config.exe_path if config.exe_path else None,
     )
     page = await browser.new_page()
