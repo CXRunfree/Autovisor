@@ -46,7 +46,7 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
     logger.info(f"正在启动{config.driver}浏览器...")
     browser = await p.chromium.launch(
         channel=driver,
-        headless=False,
+        headless=True,
         executable_path=config.exe_path if config.exe_path else None,
     )
     page = await browser.new_page()
@@ -191,15 +191,15 @@ async def main():
     print("===== Runtime Log =====")
     async with async_playwright() as p:
         page, browser = await init_page(p)
+        # 先启动人机验证协程
+        verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
+        # 拦截验证码请求
+        await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
         # 进行登录
         if not config.username or not config.password:
             logger.info("请手动填写账号密码...")
         logger.info("正在等待登录完成...")
-        # 先启动人机验证协程
-        verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
         await auto_login(page, modules)
-        # 拦截验证码请求
-        await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
         # 启动协程任务
         video_optimize_task = asyncio.create_task(video_optimize(page, config))
         skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
