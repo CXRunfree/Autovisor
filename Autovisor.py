@@ -53,7 +53,7 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
     with open('res/stealth.min.js', 'r') as f:
         js = f.read()
     await page.add_init_script(js)
-    logger.write_log(f"stealth.js注入完成.\n")
+    logger.write_log(f"stealth.js执行完成.\n")
     page.set_default_timeout(24 * 3600 * 1000)
     viewsize = await page.evaluate(
         '''() => {
@@ -141,7 +141,7 @@ async def working_loop(page: Page, is_new_version=False, is_hike_class=False):
             await learning_loop(page, start_time, is_new_version, is_hike_class)
         else:
             await review_loop(page, start_time, is_hike_class)
-        if is_hike_class == False:
+        if is_hike_class is False:
             if "current_play" in await all_class[cur_index].get_attribute('class'):
                 cur_index += 1
         else:

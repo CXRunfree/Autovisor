@@ -18,7 +18,7 @@ def test_mirrors():
     for name, url in config.mirrors.items():
         logger.info(f"正在测试 {name} 镜像源...")
         try:
-            response = requests.get(url + "/simple/0", timeout=5)  # 设置超时，避免卡住
+            response = requests.get(url + "/simple/0", headers=config.headers, timeout=5)  # 设置超时，避免卡住
             if response.status_code == 200:
                 logger.info(f"{name} 镜像源 连接成功！")
                 return name, url
@@ -57,7 +57,7 @@ def download_wheel(mirror_name, base_url, package_name, version=None):
 
     # 发送请求，找到匹配的 .whl 文件
     logger.info(f"正在从{mirror_name}镜像源下载 {package_name}.whl 文件...")
-    response = requests.get(package_url)
+    response = requests.get(package_url, headers=config.headers)
     response.raise_for_status()
     # 获取系统架构
     arch = get_system_arch()
@@ -82,7 +82,7 @@ def download_wheel(mirror_name, base_url, package_name, version=None):
     whl_path = wheel_url.split('/')[-1].split("#")[0]
 
     # 下载 .whl 文件
-    response = requests.get(wheel_url, stream=True)
+    response = requests.get(wheel_url, headers=config.headers, stream=True)
     total_size = int(response.headers.get('content-length', 0))
     with open(whl_path, 'wb') as f:
         for chunk in response.iter_content(chunk_size=512):

@@ -11,12 +11,24 @@ logger = Logger()
 
 async def evaluate_js(page: Page, js: str, wait_selector=None, timeout=None, is_hike_class=False) -> None:
     try:
-        if wait_selector and is_hike_class == False:
+        if wait_selector and is_hike_class is False:
             await page.wait_for_selector(wait_selector, timeout=timeout)
-        if is_hike_class == False:
+        if is_hike_class is False:
             await page.evaluate(js)
     except Exception as e:
         logger.write_log(f"Exec JS failed: {js} Selector:{wait_selector} Error:{repr(e)}\n")
+        logger.write_log(traceback.format_exc())
+        return
+
+
+async def evaluate_on_element(page: Page, selector=None, js: str = None, timeout: float = None,
+                              is_hike_class=False) -> None:
+    try:
+        if selector and is_hike_class is False:
+            element = page.locator(selector).first
+            await element.evaluate(js)
+    except Exception as e:
+        logger.write_log(f"Exec JS failed: Selector:{selector} JS:{js} Error:{repr(e)}\n")
         logger.write_log(traceback.format_exc())
         return
 
@@ -27,21 +39,17 @@ async def optimize_page(page: Page, config: Config, is_new_version=False, is_hik
         await evaluate_js(page, config.pop_js, ".studytime-div", None, is_hike_class)
         if not is_new_version:
             if is_hike_class:
-                
                 pass
             else:
                 hour = time.localtime().tm_hour
                 if hour >= 18 or hour < 7:
-                    await evaluate_js(page, config.night_js, ".Patternbtn-div", 1500)
-                header_tip = page.locator(".exploreTip").first
-                await header_tip.evaluate("el=>el.remove()")
-                ai_bot = page.locator(".ai-helper-Index2").first
-                await ai_bot.evaluate("el=>el.remove()")
+                    await evaluate_on_element(page, ".Patternbtn-div", "el=>el.click()", timeout=1500)
+                await evaluate_on_element(page, ".exploreTip", "el=>el.remove()", timeout=1500)
+                await evaluate_on_element(page, ".ai-helper-Index2", "el=>el.remove()", timeout=1500)
                 ai_msg = page.locator(".aiMsg.once")
-                if await ai_msg.count() > 0 or ai_msg.is_visible():
-                    await ai_msg.evaluate("el=>el.remove()")
+                if await ai_msg.is_visible(timeout=1500):
+                    await ai_msg.evaluate("el=>el.remove()", timeout=1500)
                 logger.info("页面优化完成!")
-
     except Exception as e:
         logger.write_log(f"Exec optimize_page failed. Error:{repr(e)}\n")
         logger.write_log(traceback.format_exc())
@@ -97,7 +105,7 @@ async def get_filtered_class(page: Page, is_new_version=False, is_hike_class=Fal
                     to_learn_class.append(each)
             logger.write_log(f"Get to-learn class: {len(all_class)}\n")
             return to_learn_class
-    
+
     else:
         all_class = await page.locator(".clearfix.video").all()
         if include_all:

@@ -36,11 +36,13 @@ class Config:
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
         # 镜像源
         self.mirrors = {
-            #"豆瓣": "https://pypi.doubanio.com",
             "华为": "https://mirrors.huaweicloud.com/repository/pypi",
             "阿里": "https://mirrors.aliyun.com/pypi",
             "清华": "https://pypi.tuna.tsinghua.edu.cn",
             "官方": "https://pypi.org"
+        }
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
         }
 
     def _read_config(self) -> None:
