@@ -100,3 +100,19 @@ async def wait_for_verify(page: Page, event_loop) -> None:
             return
         except Exception as e:
             continue
+
+
+async def tracing(context) -> None:
+    await context.tracing.start_chunk()
+    while True:
+        try:
+            await asyncio.sleep(60)
+            await context.tracing.stop_chunk(path = "trace/trace.zip")
+            logger.info("调试用跟踪文件已保存到trace/trace.zip")
+            await context.tracing.start_chunk()
+        except TargetClosedError:
+            logger.write_log("浏览器已关闭,调试模块已下线.\n")
+            return
+        except Exception as e:
+            logger.error(f"调试模块异常: {e}")
+            break

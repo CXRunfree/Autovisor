@@ -14,7 +14,7 @@ from modules.progress import get_course_progress, show_course_progress
 from modules.support import show_donate
 from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr
 from modules.slider import slider_verify
-from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify
+from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify, tracing
 from modules import installer
 
 # 获取全局事件循环
@@ -49,7 +49,10 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
         headless=False,
         executable_path=config.exe_path if config.exe_path else None,
     )
-    page = await browser.new_page()
+    context = await browser.new_context()
+    await context.tracing.start(screenshots=True, snapshots=True, sources=True)
+    await context.tracing.start_chunk()
+    page = await context.new_page()
     logger.write_log(f"{config.driver}浏览器启动完成.\n")
     #抹去特征
     with open('res/stealth.min.js', 'r') as f:
@@ -65,7 +68,7 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
     viewsize["height"] -= 60
     await page.set_viewport_size(viewsize)
     logger.write_log(f"窗口大小设置完成.\n")
-    return page, browser
+    return page, browser, context
 
 
 async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_class=False):
@@ -190,7 +193,7 @@ async def main():
         logger.info("所有依赖库安装完成!")
     print("===== Runtime Log =====")
     async with async_playwright() as p:
-        page, browser = await init_page(p)
+        page, browser, context = await init_page(p)
         # 进行登录
         if not config.username or not config.password:
             logger.info("请手动填写账号密码...")
@@ -198,13 +201,15 @@ async def main():
         # 先启动人机验证协程
         verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
         await auto_login(page, modules)
+        await context.tracing.stop_chunk(path = "trace/login_trace.zip")
         # 拦截验证码请求
         await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
         # 启动协程任务
+        tracing_task = asyncio.create_task(tracing(context))
         video_optimize_task = asyncio.create_task(video_optimize(page, config))
         skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
         play_video_task = asyncio.create_task(play_video(page))
-        tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task])
+        tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task, tracing_task])
         # 遍历所有课程,加载网页
         for course_url in config.course_urls:
             print("==" * 10)
