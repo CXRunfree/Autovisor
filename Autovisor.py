@@ -50,8 +50,9 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
         executable_path=config.exe_path if config.exe_path else None,
     )
     context = await browser.new_context()
-    await context.tracing.start(screenshots=True, snapshots=True, sources=True)
-    await context.tracing.start_chunk()
+    if config.enableTracer:
+        await context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        await context.tracing.start_chunk()
     page = await context.new_page()
     logger.write_log(f"{config.driver}浏览器启动完成.\n")
     #抹去特征
@@ -201,15 +202,21 @@ async def main():
         # 先启动人机验证协程
         verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
         await auto_login(page, modules)
-        await context.tracing.stop_chunk(path = "trace/login_trace.zip")
+        if config.enableTracer:
+            await context.tracing.stop_chunk(path = "trace/login_trace.zip")
         # 拦截验证码请求
-        await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
+        if config.enableCaptchaIntercept:
+            await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
         # 启动协程任务
-        tracing_task = asyncio.create_task(tracing(context))
+        tracing_task = None
+        if config.enableTracer:
+            tracing_task = asyncio.create_task(tracing(context))
         video_optimize_task = asyncio.create_task(video_optimize(page, config))
         skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
         play_video_task = asyncio.create_task(play_video(page))
-        tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task, tracing_task])
+        tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task])
+        if config.enableTracer:
+            tasks.append(tracing_task)
         # 遍历所有课程,加载网页
         for course_url in config.course_urls:
             print("==" * 10)
