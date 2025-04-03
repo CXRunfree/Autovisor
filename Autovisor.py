@@ -5,6 +5,8 @@ import time
 import traceback
 import sys
 import re
+
+import win32gui
 from playwright.async_api import async_playwright, Playwright, Page, Browser
 from playwright.async_api import TimeoutError
 from playwright._impl._errors import TargetClosedError
@@ -12,7 +14,7 @@ from modules.logger import Logger
 from modules.configs import Config
 from modules.progress import get_course_progress, show_course_progress
 from modules.support import show_donate
-from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr
+from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr, get_browser_window
 from modules.slider import slider_verify
 from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify
 from modules import installer
@@ -27,7 +29,7 @@ async def auto_login(page: Page, modules=None):
     if "login" not in page.url:
         logger.info("检测到已登录,跳过登录步骤.")
         return
-    await page.wait_for_selector(".wall-main", state='attached') # 等待登陆界面加载
+    await page.wait_for_selector(".wall-main", state='attached')  # 等待登陆界面加载
     if config.username and config.password:
         await page.wait_for_selector("#lUsername", state="attached")
         await page.wait_for_selector("#lPassword", state="attached")
@@ -48,6 +50,10 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
         channel=driver,
         headless=False,
         executable_path=config.exe_path if config.exe_path else None,
+        args=[
+            f'--window-size={1600},{900}',
+            '--window-position=100,100',  # 窗口位置
+        ],
     )
     page = await browser.new_page()
     logger.write_log(f"{config.driver}浏览器启动完成.\n")
@@ -57,14 +63,7 @@ async def init_page(p: Playwright) -> tuple[Page, Browser]:
     await page.add_init_script(js)
     logger.write_log(f"stealth.js执行完成.\n")
     page.set_default_timeout(24 * 3600 * 1000)
-    viewsize = await page.evaluate(
-        '''() => {
-            return {width: window.screen.availWidth, height: window.screen.availHeight};
-        }'''
-    )
-    viewsize["height"] -= 60
-    await page.set_viewport_size(viewsize)
-    logger.write_log(f"窗口大小设置完成.\n")
+    
     return page, browser
 
 
@@ -196,20 +195,26 @@ async def main():
             logger.info("请手动填写账号密码...")
         logger.info("正在等待登录完成...")
         # 先启动人机验证协程
-        verify_task = asyncio.create_task(wait_for_verify(page, event_loop_verify))
+        verify_task = asyncio.create_task(wait_for_verify(page, config, event_loop_verify))
         await auto_login(page, modules)
         # 拦截验证码请求
-        await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
+        if config.enableAbortVerify:
+            await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
+            logger.info("已启动拦截人机验证功能!")
         # 启动协程任务
         video_optimize_task = asyncio.create_task(video_optimize(page, config))
         skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
         play_video_task = asyncio.create_task(play_video(page))
         tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task])
+        if config.enableHideWindow:
+            window = get_browser_window(title="用户配置 1")
+            win32gui.MoveWindow(window, 3600, 3600, 1600, 900, True)
+            logger.info("登录完成,已自动隐藏播放窗口.")
         # 遍历所有课程,加载网页
         for course_url in config.course_urls:
             print("==" * 10)
             is_new_version = "fusioncourseh5" in course_url
-            is_hike_class = "hike.zhihuishu.com" in course_url # 判断是否为翻转课
+            is_hike_class = "hike.zhihuishu.com" in course_url  # 判断是否为翻转课
             logger.info("正在加载播放页...")
             await page.goto(course_url, wait_until="commit")
             # 关闭弹窗,优化页面结构
@@ -223,7 +228,7 @@ async def main():
             if is_hike_class:
                 title_selector = await page.wait_for_selector(".course-name")
                 course_title = await title_selector.text_content()
-                logger.info(f"当前课程:<<{course_title}>>， 是翻转课哎。")
+                logger.info(f"当前课程:<<{course_title}>>， 是翻转课哎")
             # 启动课程主循环
             await working_loop(page, is_new_version=is_new_version, is_hike_class=is_hike_class)
     print("==" * 10)

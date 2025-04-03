@@ -32,15 +32,15 @@ def test_mirrors():
     return None, None
 
 
-def extract_whl(whl_file, extract_to):
+def extract_whl(whl_path, extract_to):
     # 检查是否是一个 zip 文件
-    if not zipfile.is_zipfile(whl_file):
-        raise ValueError(f"{whl_file} 不是一个有效的 .whl 文件!")
+    if not zipfile.is_zipfile(whl_path):
+        raise ValueError(f"{whl_path} 不是一个有效的 .whl 文件!")
 
     # 打开并解压 .whl 文件
-    with zipfile.ZipFile(whl_file, 'r') as whl_zip:
+    with zipfile.ZipFile(whl_path, 'r') as whl_zip:
         whl_zip.extractall(extract_to)
-        logger.info(f"已将 {whl_file} 解压到: {extract_to}")
+        logger.info(f"已将 {whl_path} 解压到: {extract_to}")
 
 
 def get_system_arch():

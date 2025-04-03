@@ -4,9 +4,16 @@ from playwright.async_api import Page, Locator
 from playwright.async_api import TimeoutError
 from modules.configs import Config
 import time
+import pygetwindow as gw
 from modules.logger import Logger
 
 logger = Logger()
+
+def get_browser_window(title: str):
+    # 获取所有窗口并尝试匹配 Playwright 窗口
+    for window in gw.getAllWindows():
+        if title in window.title.lower():  # 这里可修改匹配规则
+            return window._hWnd
 
 
 async def evaluate_js(page: Page, wait_selector, js: str, timeout=None, is_hike_class=False) -> None:

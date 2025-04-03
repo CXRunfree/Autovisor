@@ -8,14 +8,19 @@ class Config:
         if config_path:
             self.config_path = config_path
             self._config = configparser.ConfigParser()
-            # 读取用户常量
+            # 用户常量
             self._read_config()
             self.driver = self.get_driver()
-            self.exe_path = self._config.get('custom-option', 'EXE_PATH', raw=True)
             self.username = self._config.get('user-account', 'username', raw=True)
             self.password = self._config.get('user-account', 'password', raw=True)
-            self.enableAutoCaptcha = self.get_bool_field('custom-option', 'enableAutoCaptcha')
-            self.soundOff = self.get_bool_field('custom-option', 'soundOff')
+            # 浏览器选项
+            self.exe_path = self._config.get('browser-option', 'EXE_PATH', raw=True)
+            # 脚本选项
+            self.enableAutoCaptcha = self.get_bool_field('script-option', 'enableAutoCaptcha')
+            self.enableHideWindow = self.get_bool_field('script-option', 'enableHideWindow')
+            self.enableAbortVerify = self.get_bool_field('script-option', 'enableAbortVerify')
+            # 课程选项
+            self.soundOff = self.get_bool_field('course-option', 'soundOff')
             self.course_match_rule = re.compile("https://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]")
             self.course_urls = self.get_course_urls()
         # 登录
@@ -52,7 +57,7 @@ class Config:
             self._config.read(self.config_path, encoding='gbk')
 
     def get_driver(self) -> str:
-        driver = self._config.get('custom-option', 'driver', raw=True)
+        driver = self._config.get('browser-option', 'driver', raw=True)
         if not driver:
             driver = "edge"
         return driver.lower()
@@ -81,12 +86,12 @@ class Config:
     @property
     def limitMaxTime(self) -> float:
         self._read_config()
-        return float(self._config.get('custom-option', 'limitMaxTime'))
+        return float(self._config.get('course-option', 'limitMaxTime'))
 
     @property
     def limitSpeed(self) -> float:
         self._read_config()
-        return float(self._config.get('custom-option', 'limitSpeed', raw=True))
+        return float(self._config.get('course-option', 'limitSpeed', raw=True))
 
     @property
     def revise_speed(self) -> str:

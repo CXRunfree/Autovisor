@@ -1,11 +1,13 @@
 import asyncio
+import win32gui
 from playwright.async_api import Page
 from modules.configs import Config
-from modules.utils import get_video_attr
+from modules.utils import get_video_attr, get_browser_window
 from playwright._impl._errors import TargetClosedError
 from modules.logger import Logger
 
 logger = Logger()
+
 
 async def video_optimize(page: Page, config: Config) -> None:
     await page.wait_for_load_state("domcontentloaded")
@@ -84,15 +86,22 @@ async def skip_questions(page: Page, event_loop) -> None:
             continue
 
 
-async def wait_for_verify(page: Page, event_loop) -> None:
+async def wait_for_verify(page: Page, config, event_loop) -> None:
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
             await asyncio.sleep(3)
             await page.wait_for_selector(".yidun_modal__title", state="attached", timeout=1000)
             logger.warn("检测到安全验证,请手动完成验证...", shift=True)
+
+            window = get_browser_window(title="用户配置 1")
+            win32gui.MoveWindow(window, 100, 100, 1600, 900, True)
+            logger.info("播放窗口已自动前置.", shift=True)
             await page.wait_for_selector(".yidun_modal__title", state="hidden", timeout=24 * 3600 * 1000)
             event_loop.set()
+            if config.enableHideWindow:
+                win32gui.MoveWindow(window, 3600, 3600, 1600, 900, True)
+                logger.info("已自动隐藏播放窗口.")
             logger.info("安全验证已完成.", shift=True)
             await asyncio.sleep(30)  # 较长时间内不会再次触发验证
         except TargetClosedError:
