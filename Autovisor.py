@@ -197,10 +197,6 @@ async def main():
         # 先启动人机验证协程
         verify_task = asyncio.create_task(wait_for_verify(page, config, event_loop_verify))
         await auto_login(page, modules)
-        # 拦截验证码请求
-        if config.enableAbortVerify:
-            await page.route(re.compile(r"^https://.*?\.dun\.163.*?\.com/.*?"), lambda route: route.abort())
-            logger.info("已启动拦截人机验证功能!")
         # 启动协程任务
         video_optimize_task = asyncio.create_task(video_optimize(page, config))
         skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))

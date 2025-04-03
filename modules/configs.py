@@ -18,7 +18,6 @@ class Config:
             # 脚本选项
             self.enableAutoCaptcha = self.get_bool_field('script-option', 'enableAutoCaptcha')
             self.enableHideWindow = self.get_bool_field('script-option', 'enableHideWindow')
-            self.enableAbortVerify = self.get_bool_field('script-option', 'enableAbortVerify')
             # 课程选项
             self.soundOff = self.get_bool_field('course-option', 'soundOff')
             self.course_match_rule = re.compile("https://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]")

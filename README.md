@@ -1,9 +1,5 @@
 ##  Autovisor
 
-智慧树视频课辅助脚本，开启挂机摸鱼时代~
-
-**新学期必备干货, 建议收藏备用 !!**
-
 **Github项目主页：**[CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor)
 
 ------
@@ -14,9 +10,7 @@
 **近期更新:**
 
 - **新增自动隐藏播放界面功能(可选)**, 当出现人机验证时会自动显示;
-
 - **新增对 "翻转课" 视频的支持 @PencilCore**
-- **通过域名拦截阻止人机验证弹窗出现(可选) @mc139790**
 - 修复了播放页部分提示框未成功关闭导致程序卡住的bug;
 - 其他代码层面调整优化, 提高了程序稳定性.
 
@@ -136,5 +130,5 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 
 **作者的CSDN:** [欢迎关注~](https://blog.csdn.net/Runfreeone)
 
-**注意：本程序只可用于学习和研究计算机原理**
+**声明：本程序只可用于学习和研究计算机原理, 请于24h删除所有存档 ! **
 
