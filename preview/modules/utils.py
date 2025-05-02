@@ -3,7 +3,7 @@ import json
 import os.path
 import traceback
 from typing import List
-from playwright.async_api import Page, Locator
+from playwright.async_api import Page, Locator, BrowserContext
 from playwright.async_api import TimeoutError
 from pygetwindow import Win32Window
 
@@ -11,23 +11,10 @@ from modules.configs import Config
 import time
 import pygetwindow as gw
 from modules.logger import Logger
+from preview.modules import quark
 
 logger = Logger()
 
-def save_cookies(cookies, filename="cookies.json"):
-    """保存登录Cookies到文件"""
-    with open(filename, 'w') as f:
-        json.dump(cookies, f)
-
-def load_cookies(filename="cookies.json"):
-    """从文件加载 Cookies"""
-    try:
-        with open(filename, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
-    except json.JSONDecodeError:
-        return None
 
 # 将python终端前置
 def bring_console_to_front():
@@ -36,6 +23,22 @@ def bring_console_to_front():
     if hwnd:
         ctypes.windll.user32.ShowWindow(hwnd, 5)  # SW_SHOW
         ctypes.windll.user32.SetForegroundWindow(hwnd)
+
+
+async def get_quark_ticket(context: BrowserContext):
+    os.makedirs("res/", exist_ok=True)
+    if os.path.exists("res/userdata.json"):
+        with open("res/userdata.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            ticket = data.get("service_ticket")
+            if not ticket:
+                ticket = await quark.login(context)
+    else:
+        ticket = await quark.login(context)
+        data = {"service_ticket": ticket}
+        with open("res/userdata.json", "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    return ticket
 
 
 async def display_window(page: Page) -> None:
@@ -126,7 +129,7 @@ async def get_video_attr(page, attr: str) -> any:
 
 async def get_lesson_name(page: Page, is_hike_class=False) -> str:
     if is_hike_class:
-        #title_ele1 = await page.wait_for_selector("#sourceTit")
+        title_ele1 = await page.wait_for_selector("#sourceTit")
         title_ele = await page.wait_for_selector("span")
         await page.wait_for_timeout(500)
         title = await title_ele.get_attribute("title")

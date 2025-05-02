@@ -12,14 +12,34 @@ from modules.configs import Config
 from modules.progress import get_course_progress, show_course_progress
 from modules.support import show_donate
 from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr, hide_window, \
-    get_browser_window, bring_console_to_front, save_cookies, load_cookies
+    get_browser_window, bring_console_to_front, get_quark_ticket
 from modules.slider import slider_verify
-from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify, activate_window, task_monitor
+from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify, activate_window, \
+    handle_quark_answer, task_monitor
 from modules import installer
 
 # 获取全局事件循环
 event_loop_verify = asyncio.Event()
 event_loop_answer = asyncio.Event()
+
+
+async def auto_login(page: Page, modules=None):
+    await page.goto(config.login_url, wait_until="commit")
+    if "login" not in page.url:
+        logger.info("检测到已登录,跳过登录步骤.")
+        return
+    await page.wait_for_selector(".wall-main", state='attached')  # 等待登陆界面加载
+    if config.username and config.password:
+        await page.wait_for_selector("#lUsername", state="attached")
+        await page.wait_for_selector("#lPassword", state="attached")
+        await page.locator('#lUsername').fill(config.username)
+        await page.locator('#lPassword').fill(config.password)
+        await page.wait_for_selector(".wall-sub-btn", state="attached")
+        await page.wait_for_timeout(500)
+        await page.locator(".wall-sub-btn").first.click()
+    if config.enableAutoCaptcha and modules:
+        await slider_verify(page, modules)
+    await page.wait_for_selector(".wall-main", state='hidden')
 
 
 async def init_page(p: Playwright) -> tuple[Page, BrowserContext]:
@@ -35,13 +55,6 @@ async def init_page(p: Playwright) -> tuple[Page, BrowserContext]:
         ],
     )
     context = await browser.new_context()
-    # 加载 Cookies
-    cookies = load_cookies("res/cookies.json")
-    if cookies:
-        await context.add_cookies(cookies)
-        logger.info("已加载 Cookies!")
-    else:
-        logger.info("未找到 Cookies,将跳转至登录页.")
     page = await context.new_page()
     logger.write_log(f"{config.driver}浏览器启动完成.\n")
     #抹去特征
@@ -52,33 +65,6 @@ async def init_page(p: Playwright) -> tuple[Page, BrowserContext]:
     page.set_default_timeout(24 * 3600 * 1000)
 
     return page, context
-
-async def auto_login(context: BrowserContext, page: Page, modules=None):
-    async def request_handler(request):
-        if "https://www.zhihuishu.com" in request.url:
-            cookies = await context.cookies()
-            save_cookies(cookies, "res/cookies.json")
-            logger.info(f"已保存登录凭证到: res/cookies.json,下次可免密登录.")
-            # 停止监听
-            page.remove_listener('request', request_handler)
-
-    await page.goto(config.login_url, wait_until="commit")
-    if "login" not in page.url:
-        logger.info("检测到已登录,跳过登录步骤.")
-        return
-    await page.wait_for_selector(".wall-main", state='attached')  # 等待登陆界面加载
-    page.on('request', request_handler)
-    if config.username and config.password:
-        await page.wait_for_selector("#lUsername", state="attached")
-        await page.wait_for_selector("#lPassword", state="attached")
-        await page.locator('#lUsername').fill(config.username)
-        await page.locator('#lPassword').fill(config.password)
-        await page.wait_for_selector(".wall-sub-btn", state="attached")
-        await page.wait_for_timeout(500)
-        await page.locator(".wall-sub-btn").first.click()
-    if config.enableAutoCaptcha and modules:
-        await slider_verify(page, modules)
-    await page.wait_for_selector(".wall-main", state='hidden')
 
 
 async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_class=False):
@@ -210,7 +196,7 @@ async def main():
         logger.info("正在等待登录完成...")
         # 先启动人机验证协程
         verify_task = asyncio.create_task(wait_for_verify(page, config, event_loop_verify))
-        await auto_login(context, page, modules)
+        await auto_login(page, modules)
 
         # 启动协程任务
         video_optimize_task = asyncio.create_task(video_optimize(page, config))
@@ -224,6 +210,13 @@ async def main():
             tasks.append(activate_window_task)
             await hide_window(page)
 
+        # 开始登录quark
+        if config.enableQuarkSearch:
+            if not config.enableHideWindow:
+                bring_console_to_front()
+            ticket = await get_quark_ticket(context)
+            if not ticket:
+                logger.warn("获取夸克登录凭证失败,无法开启自动答题!")
         # 任务监视器
         monitor_task = asyncio.create_task(task_monitor(tasks))
         # 遍历所有课程,加载网页
@@ -245,6 +238,14 @@ async def main():
                 title_selector = await page.wait_for_selector(".course-name")
                 course_title = await title_selector.text_content()
                 logger.info(f"当前课程:<<{course_title}>>， 是翻转课哎")
+            # 开启夸克自动答题功能
+            if config.enableQuarkSearch:
+                async with context.expect_page() as new_page_info:
+                    exam_btns = await page.locator(".homeworkExam").all()
+                    await exam_btns[-1].click()
+                exam_page: Page = await new_page_info.value
+                quark_answer_task = asyncio.create_task(handle_quark_answer(context, exam_page, ticket))
+                tasks.append(quark_answer_task)
             # 启动课程主循环
             await working_loop(page, is_new_version=is_new_version, is_hike_class=is_hike_class)
     print("==" * 10)
@@ -253,7 +254,6 @@ async def main():
     # 结束所有协程任务
     await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
     await monitor_task
-
 
 if __name__ == "__main__":
     print("Github:CXRunfree All Rights Reserved.")
@@ -286,4 +286,4 @@ if __name__ == "__main__":
             logger.error("系统出错,请检查后重新启动!")
     finally:
         logger.save()
-        input("程序已结束,按Enter退出...")
+        os.system("pause")

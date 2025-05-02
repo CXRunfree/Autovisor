@@ -1,8 +1,8 @@
-Autovisor.zip
 Releases/
 build/
 dist/
-Res/__init__.py
+res/userdata.json
+res/cookies.json
 .obsidian/
 .idea/
 __pycache__/
@@ -10,8 +10,5 @@ __pycache__/
 .venv/
 captcha/
 logs/
-.obsidian/
-test_config.ini
-setup.py
-LICENSE
-*.spec
+./preview/
+

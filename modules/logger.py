@@ -33,21 +33,24 @@ class Logger:
 
     def info(self, msg, shift=False):
         if shift:
-            print(f"\n\033[32m[INFO]\033[0m {msg}")
+            text = f"\r\n\033[32m[INFO]\033[0m {msg}"
         else:
-            print(f"\033[32m[INFO]\033[0m {msg}")
+            text = f"\r\033[32m[INFO]\033[0m {msg}"
+        print(text.ljust(50))
         self.write_log(f"[INFO] {msg}\n")
 
     def warn(self, msg, shift=False):
         if shift:
-            print(f"\n\033[33m[WARN]\033[0m {msg}")
+            text = f"\r\n\033[33m[WARN]\033[0m {msg}"
         else:
-            print(f"\033[33m[WARN]\033[0m {msg}")
+            text = f"\r\033[33m[WARN]\033[0m {msg}"
+        print(text.ljust(50))
         self.write_log(f"[WARN] {msg}\n")
 
     def error(self, msg, shift=False):
         if shift:
-            print(f"\n\033[31m[ERROR]\033[0m {msg}")
+            text = f"\r\n\033[31m[ERROR]\033[0m {msg}"
         else:
-            print(f"\033[31m[ERROR]\033[0m {msg}")
+            text = f"\r\033[31m[ERROR]\033[0m {msg}"
+        print(text.ljust(50))
         self.write_log(f"[ERROR] {msg}\n")

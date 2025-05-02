@@ -1,7 +1,6 @@
 # encoding=utf-8
 import random
 from playwright.async_api import Page, TimeoutError
-from modules.utils import get_video_attr
 from modules.logger import Logger
 
 logger = Logger()
@@ -35,7 +34,7 @@ async def get_course_progress(page: Page, is_new_version=False, is_hike_class=Fa
         cur_play = await page.query_selector(".current_play")
         progress = await cur_play.query_selector(".progress-num")
     if not progress:
-        if is_hike_class != True:
+        if not is_hike_class:
             if is_new_version:
                 progress_ele = await cur_play.query_selector(".progress-num")
                 progress = await progress_ele.text_content()
@@ -62,7 +61,7 @@ def show_course_progress(desc, cur_time=None, limit_time=0):
             percent = 100
         length = int(percent * 30 // 100)
         progress = ("█" * length).ljust(30, " ")
-        print(f"\r{desc} |{progress}| {percent}%\t", end="", flush=True)
+        print(f"\r{desc} |{progress}| {percent}%\t".ljust(50), end="", flush=True)
     else:
         cur_time = 0 if cur_time == '' else cur_time
         left_time = round(limit_time - cur_time, 1)
@@ -71,7 +70,7 @@ def show_course_progress(desc, cur_time=None, limit_time=0):
             percent = 100
         length = int(percent * 20 // 100)
         progress = ("█" * length).ljust(20, " ")
-        print(f"\r{desc} |{progress}| {percent}%\t剩余 {left_time} min\t", end="", flush=True)
+        print(f"\r{desc} |{progress}| {percent}%\t剩余 {left_time} min\t".ljust(50), end="", flush=True)
 
 
 # 打印通用版进度条
@@ -79,4 +78,4 @@ def show_progress(desc, current, total, suffix="", width=30):
     percent = int(current / total * 100)
     length = int(percent * width // 100)
     progress = ("█" * length).ljust(width, " ")
-    print(f"\r{desc} |{progress}| {percent}%\t{suffix}", end="", flush=True)
+    print(f"\r{desc} |{progress}| {percent}%\t{suffix}".ljust(50), end="", flush=True)
