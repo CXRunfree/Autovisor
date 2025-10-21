@@ -249,7 +249,7 @@ async def main():
             await working_loop(page, is_new_version=is_new_version, is_hike_class=is_hike_class)
     print("==" * 10)
     logger.info("所有课程已学习完毕!")
-    show_donate("res/QRcode.jpg")
+    show_donate("res/NoQRcode.jpg")
     # 结束所有协程任务
     await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
     await monitor_task
