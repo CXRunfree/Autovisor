@@ -31,8 +31,39 @@ class Config:
         self.pop_js = '''document.getElementsByClassName("iconfont iconguanbi")[0].click();'''
         self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
 
-        # 视频元素修改
-        self.remove_pause = "document.querySelector('video').pause = ()=>{}"
+        # 视频元素修改 — 原型级别覆盖 + 页面内持续播放循环
+        self.remove_pause = r"""(()=>{
+            // 用 try 包裹整段, 任何单步失败不阻塞后续
+            try {
+                // 1. 原型级别覆盖 pause() 和 load()
+                HTMLVideoElement.prototype.pause = function(){};
+                HTMLVideoElement.prototype.load  = function(){};
+                // 2. 立即覆盖已有 video 元素
+                document.querySelectorAll('video').forEach(v => {
+                    v.pause = ()=>{};
+                    v.load  = ()=>{};
+                });
+                // 3. MutationObserver 自动处理新增 video
+                (new MutationObserver(() => {
+                    document.querySelectorAll('video').forEach(v => {
+                        v.pause = ()=>{};
+                        v.load  = ()=>{};
+                    });
+                })).observe(document.body || document.documentElement, { childList: true, subtree: true });
+                // 4. 阻止页面可见性检测
+                try { Object.defineProperty(document, 'hidden', { get: () => false }); } catch(e){}
+                try { Object.defineProperty(document, 'visibilityState', { get: () => 'visible' }); } catch(e){}
+                document.addEventListener('visibilitychange', e => e.stopImmediatePropagation(), true);
+                window.addEventListener('blur', e => e.stopImmediatePropagation(), true);
+                // 5. === 核心: 页面内持续播放循环 ===
+                // 每 300ms 检测一次, 暂停则立即播放 — 完全在浏览器内部, 零网络延迟
+                setInterval(() => {
+                    document.querySelectorAll('video').forEach(v => {
+                        try { if (v.paused) { v.play().catch(()=>{}); } } catch(e){}
+                    });
+                }, 300);
+            } catch(e){}
+        })();"""
         self.play_video = '''const video = document.querySelector('video');video.play();'''
         self.volume_none = "document.querySelector('video').volume=0;"
         self.set_none_icon = '''document.querySelector(".volumeBox").classList.add("volumeNone")'''

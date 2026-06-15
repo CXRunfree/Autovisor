@@ -14,13 +14,17 @@ from modules.support import show_donate
 from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr, hide_window, \
      save_cookies, load_cookies, clear_cookies, get_runtime_path
 from modules.slider import slider_verify
-from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify, task_monitor
+from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify, task_monitor, \
+     progress_watchdog
 from modules import installer
 from modules.banner import print_banner
 
 # 获取全局事件循环
 event_loop_verify = asyncio.Event()
 event_loop_answer = asyncio.Event()
+event_recovery = asyncio.Event()
+progress_queue: asyncio.Queue = None
+RECOVERY_LEVELS = ["reclick", "reload", "skip"]
 COOKIE_PATH = get_runtime_path("res", "cookies.json")
 
 
@@ -33,6 +37,46 @@ async def wait_for_interruption(event_loop: asyncio.Event) -> float:
 
 def cal_time_period(start_time: float, paused_time: float) -> float:
     return max(0.0, time.time() - start_time - paused_time)
+
+
+async def recovery_handler(page: Page, config, level: int,
+                           all_class=None, cur_index=None) -> str:
+    """
+    渐进式恢复处理。
+    level 0: 重新点击当前课程 + 重新注入脚本
+    level 1: 刷新页面
+    level 2: 跳过当前课程
+    返回: "ok" / "skipped" / "failed"
+    """
+    logger.warn(f"恢复处理: 执行级别 {level} ({RECOVERY_LEVELS[level]})", shift=True)
+
+    try:
+        if level == 0:  # reclick — 重新点击当前视频
+            if all_class and cur_index is not None and cur_index < len(all_class):
+                await all_class[cur_index].click(timeout=3000)
+                await page.wait_for_timeout(1000)
+            # 重新注入脚本
+            await page.evaluate(config.remove_pause)
+            await page.evaluate('document.querySelector("video")?.play()')
+            logger.info("恢复级别0完成: 已重新点击并注入脚本.", shift=True)
+            return "ok"
+
+        elif level == 1:  # reload — 刷新页面
+            url = page.url
+            await page.goto(url, wait_until="commit")
+            await page.wait_for_timeout(2000)
+            await page.evaluate(config.remove_pause)
+            logger.info("恢复级别1完成: 页面已刷新.", shift=True)
+            return "ok"
+
+        elif level == 2:  # skip — 跳过当前课程
+            logger.info("恢复级别2: 跳过当前课程.", shift=True)
+            return "skipped"
+
+    except Exception as e:
+        logger.log_exception(f"恢复级别{level}执行失败.", e)
+
+    return "failed"
 
 async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
     driver = "msedge" if config.driver == "edge" else config.driver
@@ -123,34 +167,70 @@ async def ensure_login(context: BrowserContext, page: Page, cookies, modules=Non
     return False
 
 
-async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_class=False):
+async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_class=False,
+                        all_class=None, cur_index=None):
     paused_time = 0.0
     try:
         cur_time = await get_course_progress(page, is_new_version, is_hike_class)
     except TargetClosedError:
         return paused_time
+    # 首次推送进度到看门狗
+    if progress_queue:
+        await progress_queue.put(cur_time)
+
+    recovery_attempt = 0
+
     while cur_time != "100%":
         try:
+            # 检查看门狗是否触发了恢复
+            if event_recovery.is_set():
+                event_recovery.clear()
+                result = await recovery_handler(
+                    page, config, recovery_attempt,
+                    all_class, cur_index
+                )
+                if result == "ok":
+                    recovery_attempt = 0
+                    # 重新获取进度
+                    cur_time = await get_course_progress(page, is_new_version, is_hike_class)
+                    if progress_queue:
+                        await progress_queue.put(cur_time)
+                    continue
+                elif result == "skipped":
+                    return paused_time
+                else:
+                    recovery_attempt = min(recovery_attempt + 1, 2)
+                    continue
+
             limit_time = config.limitMaxTime
             time_period = cal_time_period(start_time, paused_time) / 60
             if 0 < limit_time <= time_period:
                 break
             cur_time = await get_course_progress(page, is_new_version, is_hike_class)
             show_course_progress(desc="完成进度:", cur_time=cur_time)
+            # 推送进度到看门狗
+            if progress_queue:
+                await progress_queue.put(cur_time)
             await asyncio.sleep(0.5)
         except TargetClosedError:
             return paused_time
         except TimeoutError as e:
             if await page.query_selector(".yidun_modal__title"):
                 paused_time += await wait_for_interruption(event_loop_verify)
+                # 验证完成后重置看门狗计时
+                if progress_queue:
+                    await progress_queue.put(cur_time)
             elif await page.query_selector(".topic-title"):
                 paused_time += await wait_for_interruption(event_loop_answer)
+                if progress_queue:
+                    await progress_queue.put(cur_time)
             else:
                 logger.debug(f"学习进度轮询未命中: {logger.summarize_exception(e)}")
     return paused_time
 
 
-async def review_loop(page: Page, start_time, is_hike_class=False):
+async def review_loop(page: Page, start_time, is_hike_class=False,
+                      all_class=None, cur_index=None):
     paused_time = 0.0
     total_time = await get_video_attr(page, "duration")
     if total_time is None:
@@ -159,8 +239,30 @@ async def review_loop(page: Page, start_time, is_hike_class=False):
         await page.evaluate(config.reset_curtime)  # 重置视频播放时间
     except TargetClosedError:
         return paused_time
+
+    recovery_attempt = 0
+
     while True:
         try:
+            # 检查看门狗
+            if event_recovery.is_set():
+                event_recovery.clear()
+                result = await recovery_handler(
+                    page, config, recovery_attempt,
+                    all_class, cur_index
+                )
+                if result == "ok":
+                    recovery_attempt = 0
+                    total_time = await get_video_attr(page, "duration")
+                    if total_time is None:
+                        return paused_time
+                    continue
+                elif result == "skipped":
+                    return paused_time
+                else:
+                    recovery_attempt = min(recovery_attempt + 1, 2)
+                    continue
+
             limit_time = config.limitMaxTime
             cur_time = await get_video_attr(page, "currentTime")
             if cur_time is None or cur_time >= total_time:
@@ -169,14 +271,21 @@ async def review_loop(page: Page, start_time, is_hike_class=False):
             if 0 < limit_time <= time_period:
                 break
             show_course_progress(desc="完成进度:", cur_time=time_period, limit_time=limit_time)
+            # 推送进度到看门狗
+            if progress_queue:
+                await progress_queue.put(cur_time)
             await asyncio.sleep(0.5)
         except TargetClosedError:
             return paused_time
         except TimeoutError as e:
             if await page.query_selector(".yidun_modal__title"):
                 paused_time += await wait_for_interruption(event_loop_verify)
+                if progress_queue:
+                    await progress_queue.put(None)
             elif await page.query_selector(".topic-title"):
                 paused_time += await wait_for_interruption(event_loop_answer)
+                if progress_queue:
+                    await progress_queue.put(None)
             else:
                 logger.debug(f"复习进度轮询未命中: {logger.summarize_exception(e)}")
     return paused_time
@@ -212,9 +321,11 @@ async def working_loop(page: Page, is_new_version=False, is_hike_class=False):
         await page.wait_for_selector("video", state="attached")
         await page.evaluate(config.remove_pause)
         if learning:
-            paused_time += await learning_loop(page, start_time, is_new_version, is_hike_class)
+            paused_time += await learning_loop(page, start_time, is_new_version, is_hike_class,
+                                                all_class, cur_index)
         else:
-            paused_time += await review_loop(page, start_time, is_hike_class)
+            paused_time += await review_loop(page, start_time, is_hike_class,
+                                             all_class, cur_index)
         if is_hike_class is False:
             if "current_play" in await all_class[cur_index].get_attribute('class'):
                 cur_index += 1
@@ -254,6 +365,8 @@ async def check_time_limit(page: Page, start_time, paused_time, all_class, title
 
 
 async def main():
+    global progress_queue
+
     modules, tasks = [], []
     if config.enableAutoCaptcha:
         print("===== Install Log =====")
@@ -267,14 +380,22 @@ async def main():
 
         await ensure_login(context, page, cookies, modules)
 
+        # 初始化看门狗队列
+        progress_queue = asyncio.Queue()
+        event_recovery.clear()
+
         # 先启动人机验证协程
         verify_task = asyncio.create_task(wait_for_verify(page, config, event_loop_verify))
 
         # 启动协程任务
         video_optimize_task = asyncio.create_task(video_optimize(page, config))
         skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
-        play_video_task = asyncio.create_task(play_video(page))
-        tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task])
+        play_video_task = asyncio.create_task(play_video(page, config))
+        # 进度看门狗 — 检测冻结和异常
+        watchdog_task = asyncio.create_task(
+            progress_watchdog(page, progress_queue, event_recovery)
+        )
+        tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task, watchdog_task])
 
         # 隐藏窗口
         if config.enableHideWindow:

@@ -1,4 +1,6 @@
 import asyncio
+import random
+import time
 from playwright.async_api import TimeoutError
 from playwright.async_api import Page
 from modules.configs import Config
@@ -7,6 +9,71 @@ from playwright._impl._errors import TargetClosedError
 from modules.logger import Logger
 
 logger = Logger()
+
+# ========== 恢复/看门狗机制 ==========
+
+STALL_TIMEOUT = 60       # 进度冻结阈值（秒）
+RECOVERY_LEVELS = ["reclick", "reload", "skip"]
+
+
+async def progress_watchdog(
+    page: Page,
+    progress_queue: asyncio.Queue,
+    recovery_event: asyncio.Event,
+    stall_timeout: float = STALL_TIMEOUT,
+) -> None:
+    """
+    进度看门狗 — 监听进度队列，如果超过 stall_timeout 秒没有任何进度变化，
+    则触发 recovery_event 通知主循环执行恢复操作。
+
+    同时监控页面异常状态（对话框/JS错误/白屏）。
+    """
+    last_progress = None
+    last_update_time = time.monotonic()
+    logger.info(f"进度看门狗已启动, 冻结阈值: {stall_timeout}s")
+
+    while True:
+        try:
+            # 从队列获取进度更新，超时 = stall_timeout 秒无更新即触发恢复
+            try:
+                progress_val = await asyncio.wait_for(
+                    progress_queue.get(), timeout=stall_timeout
+                )
+                if progress_val != last_progress:
+                    last_progress = progress_val
+                    last_update_time = time.monotonic()
+                # 同一进度值连续出现不算更新
+            except asyncio.TimeoutError:
+                # --- 长时间无进度更新 → 触发恢复 ---
+                logger.warn(
+                    f"检测到进度冻结(>{stall_timeout}s 无进度变化), 准备恢复...",
+                    shift=True,
+                )
+                recovery_event.set()
+                # 等待主循环处理完恢复（最多等 20 秒）
+                await asyncio.sleep(20)
+                recovery_event.clear()
+                # 更新基准时间，避免连环触发
+                last_update_time = time.monotonic()
+
+            # --- 额外检查：页面是否出现异常对话框 ---
+            try:
+                if await page.locator(".el-message-box__wrapper").is_visible(timeout=200):
+                    logger.warn("检测到异常弹窗, 触发恢复流程.", shift=True)
+                    recovery_event.set()
+                    await asyncio.sleep(20)
+                    recovery_event.clear()
+                    last_update_time = time.monotonic()
+            except Exception:
+                pass
+
+        except TargetClosedError:
+            logger.debug("浏览器已关闭, 进度看门狗停止运行.")
+            return
+        except Exception as e:
+            logger.log_exception("进度看门狗异常.", e)
+            await asyncio.sleep(5)
+            continue
 
 
 def is_expected_polling_error(exc: Exception) -> bool:
@@ -63,11 +130,13 @@ async def video_optimize(page: Page, config: Config) -> None:
             continue
 
 
-async def play_video(page: Page) -> None:
+async def play_video(page: Page, config=None) -> None:
+    import random
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
-            await asyncio.sleep(2)
+            # 轮询间隔拉长 — 主要靠页面内 setInterval(300ms) 自动恢复
+            await asyncio.sleep(random.uniform(5.0, 8.0))
             await page.wait_for_selector("video", state="attached", timeout=1000)
             paused = await page.evaluate("document.querySelector('video').paused")
             if paused:
@@ -75,6 +144,16 @@ async def play_video(page: Page) -> None:
                 await page.wait_for_selector(".videoArea", timeout=1000)
                 await page.evaluate('document.querySelector("video").play();')
                 logger.debug("视频已恢复播放.")
+            # 随机在视频区域移动鼠标，模拟用户活动
+            try:
+                elem = page.locator(".videoArea")
+                box = await elem.bounding_box(timeout=500)
+                if box:
+                    rx = box['x'] + box['width'] * random.uniform(0.1, 0.9)
+                    ry = box['y'] + box['height'] * random.uniform(0.1, 0.9)
+                    await page.mouse.move(rx, ry)
+            except Exception:
+                pass
         except TargetClosedError:
             logger.debug("浏览器已关闭, 视频播放模块停止运行.")
             return
