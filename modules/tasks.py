@@ -3,6 +3,7 @@ from playwright.async_api import TimeoutError
 from playwright.async_api import Page
 from modules.configs import Config
 from modules.utils import get_video_attr, display_window, hide_window
+from modules.video_state import should_resume_paused_video
 from playwright._impl._errors import TargetClosedError
 from modules.logger import Logger
 
@@ -70,7 +71,9 @@ async def play_video(page: Page) -> None:
             await asyncio.sleep(2)
             await page.wait_for_selector("video", state="attached", timeout=1000)
             paused = await page.evaluate("document.querySelector('video').paused")
-            if paused:
+            cur_time = await get_video_attr(page, "currentTime")
+            duration = await get_video_attr(page, "duration")
+            if should_resume_paused_video(paused, cur_time, duration):
                 logger.info("检测到视频暂停,正在尝试播放.")
                 await page.wait_for_selector(".videoArea", timeout=1000)
                 await page.evaluate('document.querySelector("video").play();')

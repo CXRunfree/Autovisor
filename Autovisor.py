@@ -11,12 +11,17 @@ from modules.logger import Logger
 from modules.configs import Config
 from modules.progress import get_course_progress, show_course_progress
 from modules.support import show_donate
-from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr, hide_window, \
+from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr, get_optional_text, hide_window, \
      save_cookies, load_cookies, clear_cookies, get_runtime_path
 from modules.slider import slider_verify
 from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify, task_monitor
 from modules import installer
 from modules.banner import print_banner
+from modules.browser import get_effective_driver, resolve_browser_channel, resolve_executable_path
+from modules.lesson_navigation import course_is_complete, get_active_class, get_catalog_selectors, has_class, is_finished, \
+     next_lesson_index, parse_progress_value
+from modules.video_state import completion_settle_ms, is_video_complete, replay_from_time, should_refresh_video_duration, \
+     time_from_percent, video_percent
 
 # 获取全局事件循环
 event_loop_verify = asyncio.Event()
@@ -34,18 +39,21 @@ async def wait_for_interruption(event_loop: asyncio.Event) -> float:
 def cal_time_period(start_time: float, paused_time: float) -> float:
     return max(0.0, time.time() - start_time - paused_time)
 
+
 async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
-    driver = "msedge" if config.driver == "edge" else config.driver
-    logger.info(f"正在启动{config.driver}浏览器...")
+    driver = get_effective_driver(config.driver)
+    browser_channel = resolve_browser_channel(driver)
+    logger.info(f"正在启动{driver}浏览器...")
     launch_args = {
-        "channel": driver,
         "headless": False,
-        "executable_path": config.exe_path if config.exe_path else None,
+        "executable_path": resolve_executable_path(driver, config.exe_path),
         "args": [
             f'--window-size={1600},{900}',
             '--window-position=100,100',  # 窗口位置
         ],
     }
+    if browser_channel:
+        launch_args["channel"] = browser_channel
     try:
         browser = await p.chromium.launch(**launch_args)
     except TargetClosedError as e:
@@ -123,8 +131,68 @@ async def ensure_login(context: BrowserContext, page: Page, cookies, modules=Non
     return False
 
 
-async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_class=False):
+async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_class=False, current_lesson=None):
     paused_time = 0.0
+    if is_new_version:
+        total_time = await get_video_attr(page, "duration")
+        synced_to_catalog = False
+        while True:
+            try:
+                limit_time = config.limitMaxTime
+                time_period = cal_time_period(start_time, paused_time) / 60
+                if 0 < limit_time <= time_period:
+                    break
+                cur_video_time = await get_video_attr(page, "currentTime")
+                if should_refresh_video_duration(total_time):
+                    total_time = await get_video_attr(page, "duration")
+                catalog_percent = None
+                if current_lesson is not None:
+                    if not synced_to_catalog:
+                        catalog_percent = await sync_video_to_catalog_progress(
+                            page, current_lesson, total_time, cur_video_time
+                        )
+                        synced_to_catalog = True
+                        cur_video_time = await get_video_attr(page, "currentTime")
+                    else:
+                        catalog_percent = await get_lesson_catalog_progress(current_lesson)
+                    if catalog_percent >= 100 or await lesson_has_finish_marker(current_lesson, is_new_version=True):
+                        await page.wait_for_timeout(completion_settle_ms())
+                        break
+                if is_video_complete(cur_video_time, total_time):
+                    if current_lesson is not None and (catalog_percent is None or catalog_percent < 100):
+                        replay_time = time_from_percent(total_time, catalog_percent or 0)
+                        logger.warn(
+                            f"视频已到末尾,但平台记录仅 {catalog_percent or 0}%,将回到该进度继续播放.",
+                            shift=True,
+                        )
+                        await page.evaluate(
+                            """time => {
+                                const video = document.querySelector('video');
+                                if (!video) return;
+                                video.currentTime = time;
+                                video.play();
+                            }""",
+                            replay_time,
+                        )
+                        await asyncio.sleep(1)
+                        continue
+                    await page.wait_for_timeout(completion_settle_ms())
+                    break
+                if catalog_percent is None:
+                    show_course_progress(desc="视频播放进度:", cur_time=video_percent(cur_video_time, total_time))
+                else:
+                    show_course_progress(desc="平台记录进度:", cur_time=f"{catalog_percent}%")
+                await asyncio.sleep(0.5)
+            except TargetClosedError:
+                return paused_time
+            except TimeoutError as e:
+                if await page.query_selector(".yidun_modal__title"):
+                    paused_time += await wait_for_interruption(event_loop_verify)
+                elif await page.query_selector(".topic-title"):
+                    paused_time += await wait_for_interruption(event_loop_answer)
+                else:
+                    logger.debug(f"新版学习进度轮询未命中: {logger.summarize_exception(e)}")
+        return paused_time
     try:
         cur_time = await get_course_progress(page, is_new_version, is_hike_class)
     except TargetClosedError:
@@ -148,6 +216,78 @@ async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_cl
             else:
                 logger.debug(f"学习进度轮询未命中: {logger.summarize_exception(e)}")
     return paused_time
+
+
+async def get_lesson_catalog_progress(lesson) -> int:
+    progress = lesson.locator(".el-progress[role='progressbar']").first
+    if await progress.count() == 0:
+        return 100 if await lesson_has_finish_marker(lesson, is_new_version=True) else 0
+    value = await progress.get_attribute("aria-valuenow")
+    return parse_progress_value(value)
+
+
+async def sync_video_to_catalog_progress(page: Page, lesson, total_time, cur_video_time) -> int:
+    catalog_percent = await get_lesson_catalog_progress(lesson)
+    if catalog_percent >= 100:
+        return catalog_percent
+    if should_refresh_video_duration(total_time) or should_refresh_video_duration(cur_video_time):
+        return catalog_percent
+    expected_time = time_from_percent(total_time, catalog_percent)
+    if cur_video_time > expected_time + 15:
+        logger.warn(f"检测到播放器进度快于平台记录,已按目录进度 {catalog_percent}% 重新同步视频位置.", shift=True)
+        await page.evaluate(
+            """time => {
+                const video = document.querySelector('video');
+                if (!video) return;
+                video.currentTime = time;
+                video.play();
+            }""",
+            expected_time,
+        )
+    return catalog_percent
+
+
+async def wait_current_lesson_active(lesson, is_new_version=False, is_hike_class=False, timeout_ms=8000) -> bool:
+    active_class = get_active_class(is_new_version, is_hike_class)
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        class_name = await lesson.get_attribute("class")
+        if has_class(class_name, active_class):
+            return True
+        await asyncio.sleep(0.2)
+    return False
+
+
+async def lesson_has_finish_marker(lesson, is_new_version=False, is_hike_class=False) -> bool:
+    selectors = get_catalog_selectors(is_new_version, is_hike_class)
+    return await lesson.locator(selectors.finish).count() > 0
+
+
+async def wait_for_lesson_finish_marker(page: Page, lesson, total_time, title: str, timeout_ms=30000) -> bool:
+    if await lesson_has_finish_marker(lesson, is_new_version=True):
+        return True
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        await page.wait_for_timeout(1000)
+        if await lesson_has_finish_marker(lesson, is_new_version=True):
+            return True
+    logger.warn(f"\"{title}\" 视频已到末尾,但目录尚未打完成标记,回退几秒重播以触发进度上报.", shift=True)
+    await page.evaluate(
+        """time => {
+            const video = document.querySelector('video');
+            if (!video) return;
+            video.currentTime = time;
+            video.play();
+        }""",
+        replay_from_time(total_time),
+    )
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        await page.wait_for_timeout(1000)
+        if await lesson_has_finish_marker(lesson, is_new_version=True):
+            return True
+    logger.warn(f"\"{title}\" 仍未出现完成标记,本轮暂不进入下一课.", shift=True)
+    return False
 
 
 async def review_loop(page: Page, start_time, is_hike_class=False):
@@ -184,10 +324,8 @@ async def review_loop(page: Page, start_time, is_hike_class=False):
 
 async def working_loop(page: Page, is_new_version=False, is_hike_class=False):
     # 获取所有课程元素
-    if is_hike_class:
-        await page.wait_for_selector(".file-item", state="attached")
-    else:
-        await page.wait_for_selector(".clearfix.video", state="attached")
+    selectors = get_catalog_selectors(is_new_version, is_hike_class)
+    await page.wait_for_selector(selectors.item, state="attached")
     to_learn_class = await get_filtered_class(page, is_new_version, is_hike_class)
     learning = True if len(to_learn_class) > 0 else False
     if learning:
@@ -197,36 +335,54 @@ async def working_loop(page: Page, is_new_version=False, is_hike_class=False):
     start_time = time.time()
     paused_time = 0.0
     cur_index = 0
+    last_lesson_completed = not learning
 
     while cur_index < len(all_class):
-        await all_class[cur_index].click()
-        if is_hike_class:
-            await page.wait_for_selector(".file-item.active", state="attached")
-        else:
-            await page.wait_for_selector(".current_play", state="attached")
+        current_lesson = all_class[cur_index]
+        await current_lesson.click()
+        active = await wait_current_lesson_active(current_lesson, is_new_version, is_hike_class)
+        if not active:
+            logger.warn("等待当前课时切换超时,将重新点击一次当前课时.", shift=True)
+            await current_lesson.click()
+            active = await wait_current_lesson_active(current_lesson, is_new_version, is_hike_class)
+        if not active:
+            logger.debug(f"等待当前课时选中状态超时,继续检测视频. Selector: {selectors.active}")
         await page.wait_for_timeout(1000)
-        title = await get_lesson_name(page, is_hike_class)
+        title = await get_lesson_name(page, is_hike_class, is_new_version)
         logger.info(f"正在学习:{title}")
         page.set_default_timeout(10000)
         # 移除视频暂停功能
         await page.wait_for_selector("video", state="attached")
         await page.evaluate(config.remove_pause)
+        lesson_completed = True
         if learning:
-            paused_time += await learning_loop(page, start_time, is_new_version, is_hike_class)
+            paused_time += await learning_loop(page, start_time, is_new_version, is_hike_class, current_lesson)
+            if is_new_version:
+                total_time = await get_video_attr(page, "duration")
+                lesson_completed = await wait_for_lesson_finish_marker(page, current_lesson, total_time, title)
         else:
             paused_time += await review_loop(page, start_time, is_hike_class)
-        if is_hike_class is False:
-            if "current_play" in await all_class[cur_index].get_attribute('class'):
-                cur_index += 1
-        else:
-            if "active" in await all_class[cur_index].get_attribute('class'):
-                cur_index += 1
-        reachTimeLimit = await check_time_limit(page, start_time, paused_time, all_class, title, is_hike_class)
+        last_lesson_completed = lesson_completed
+        cur_index = next_lesson_index(cur_index, len(all_class), lesson_completed=lesson_completed)
+        reachTimeLimit = await check_time_limit(
+            page,
+            start_time,
+            paused_time,
+            all_class,
+            title,
+            is_hike_class,
+            cur_index,
+            lesson_completed,
+        )
         if reachTimeLimit:
-            return
+            return False
+        if not lesson_completed:
+            return False
+    return course_is_complete(last_lesson_completed)
 
 
-async def check_time_limit(page: Page, start_time, paused_time, all_class, title, is_hike_class) -> bool:
+async def check_time_limit(page: Page, start_time, paused_time, all_class, title, is_hike_class, cur_index,
+                           lesson_completed=True) -> bool:
     reachTimeLimit = False
     page.set_default_timeout(24 * 3600 * 1000)
     time_period = cal_time_period(start_time, paused_time) / 60
@@ -235,21 +391,14 @@ async def check_time_limit(page: Page, start_time, paused_time, all_class, title
         logger.info("即将进入下门课程!")
         reachTimeLimit = True
     else:
-        class_name = await all_class[-1].get_attribute('class')
-        if is_hike_class:
-            if "active" in class_name:
-                logger.info("已学完本课程全部内容!", shift=True)
-                print("==" * 10)
-            else:
-                logger.info(f"\"{title}\" 已完成!", shift=True)
-                logger.info(f"本次课程已学习:{time_period:.1f} min")
+        if not lesson_completed:
+            logger.warn(f"\"{title}\" 未确认完成,下次启动会重新从该课时检查.", shift=True)
+        elif is_finished(cur_index, len(all_class)):
+            logger.info("已学完本课程全部内容!", shift=True)
+            print("==" * 10)
         else:
-            if "current_play" in class_name:
-                logger.info("已学完本课程全部内容!", shift=True)
-                print("==" * 10)
-            else:
-                logger.info(f"\"{title}\" 已完成!", shift=True)
-                logger.info(f"本次课程已学习:{time_period:.1f} min")
+            logger.info(f"\"{title}\" 已完成!", shift=True)
+            logger.info(f"本次课程已学习:{time_period:.1f} min")
     return reachTimeLimit
 
 
@@ -301,17 +450,23 @@ async def main():
             # 关闭弹窗,优化页面结构
             await optimize_page(page, config, is_new_version, is_hike_class)
             logger.info("页面优化完成!")
+            if not is_new_version and await page.locator(".chapter-content-second").count() > 0:
+                is_new_version = True
+                logger.info("检测到新版课程目录,启用新版课时选择器.")
             # 获取课程标题
             if not is_new_version and is_hike_class is False:
-                title_selector = await page.wait_for_selector(".source-name")
-                course_title = await title_selector.text_content()
-                logger.info(f"当前课程:<<{course_title}>>")
+                course_title = await get_optional_text(page, ".source-name")
+                if course_title:
+                    logger.info(f"当前课程:<<{course_title}>>")
             if is_hike_class:
-                title_selector = await page.wait_for_selector(".course-name")
-                course_title = await title_selector.text_content()
-                logger.info(f"当前课程:<<{course_title}>>， 是翻转课哎")
+                course_title = await get_optional_text(page, ".course-name")
+                if course_title:
+                    logger.info(f"当前课程:<<{course_title}>>， 是翻转课哎")
             # 启动课程主循环
-            await working_loop(page, is_new_version=is_new_version, is_hike_class=is_hike_class)
+            course_completed = await working_loop(page, is_new_version=is_new_version, is_hike_class=is_hike_class)
+            if not course_completed:
+                logger.warn("存在未确认完成的课时,已停止本轮运行.", shift=True)
+                return
     print("===== Task Finished =====")
     logger.info("所有课程已学习完毕!")
     show_donate("res/QRcode.jpg", show=config.showDonateCode)
@@ -349,6 +504,11 @@ if __name__ == "__main__":
             logger.error("配置文件编码错误,保存时请选择UTF-8或GBK编码!")
         else:
             logger.error("系统出错,请检查后重新启动!")
+    except KeyboardInterrupt:
+        logger.warn("检测到用户中断,程序即将退出.", shift=True)
     finally:
         logger.save()
-        input("程序已结束,按Enter退出...")
+        try:
+            input("程序已结束,按Enter退出...")
+        except EOFError:
+            pass

@@ -1,6 +1,7 @@
 # encoding=utf-8
 import random
 from playwright.async_api import Page, TimeoutError
+from modules.lesson_navigation import get_catalog_selectors
 from modules.logger import Logger
 
 logger = Logger()
@@ -27,26 +28,19 @@ async def move_mouse(page: Page):
 async def get_course_progress(page: Page, is_new_version=False, is_hike_class=False):
     curtime = "0%"
     await move_mouse(page)
-    if is_hike_class:
-        cur_play = await page.query_selector(".file-item.active")
-        if not cur_play:
-            return "100%"
-        progress = await cur_play.query_selector(".rate")
-    else:
-        cur_play = await page.query_selector(".current_play")
-        if not cur_play:
-            return "100%"
-        progress = await cur_play.query_selector(".progress-num")
+    selectors = get_catalog_selectors(is_new_version, is_hike_class)
+    cur_play = await page.query_selector(selectors.active)
+    if not cur_play:
+        return "100%"
+    progress = await cur_play.query_selector(selectors.progress) if selectors.progress else None
     if not progress:
         if not is_hike_class:
             if is_new_version:
-                progress_ele = await cur_play.query_selector(".progress-num")
-                progress = await progress_ele.text_content()
-                finish = progress == "100%"
+                finish = await cur_play.query_selector(selectors.finish)
             else:
-                finish = await cur_play.query_selector(".time_icofinish")
+                finish = await cur_play.query_selector(selectors.finish)
         else:
-            finish = await cur_play.query_selector(".icon-finish")
+            finish = await cur_play.query_selector(selectors.finish)
         if finish:
             curtime = "100%"
     else:
@@ -63,9 +57,7 @@ def show_course_progress(desc, cur_time=None, limit_time=0):
         if isinstance(cur_time, (int, float)):
             percent = int(cur_time)
         else:
-            percent = int(str(cur_time).split("%")[0]) + 1
-        if percent >= 80:
-            percent = 100
+            percent = int(str(cur_time).split("%")[0])
         percent = max(0, min(percent, 100))
         length = int(percent * 30 // 100)
         progress = ("█" * length).ljust(30, " ")

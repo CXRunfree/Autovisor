@@ -54,7 +54,7 @@
 
 #### 二、使用须知:
 
-1.请确保系统为windows10及以上
+1.请确保系统为windows10及以上；如果使用 macOS，请参考下方“macOS 源码运行方式”。
 
 2.文件夹内有 **configs.ini文件** (可能没显示 **.ini**后缀名)，请用文本编辑器打开;
 
@@ -74,6 +74,35 @@
 4.运行 **Autovisor.exe**，会自动打开浏览器，进入网课界面后就能自动刷课了 !
 
 (如果未设置 **enableAutoCaptcha=True**, 则需要**手动完成**登录时的滑块验证)
+
+#### macOS 源码运行方式
+
+macOS 不提供 `Autovisor.exe`，请使用仓库内的启动脚本运行源码版。
+
+1.安装 Python 3.10、3.11 或 3.12。若使用 Homebrew，可执行：
+
+```bash
+brew install python@3.12
+```
+
+2.打开 `configs.ini` 并填写课程链接、账号密码等配置。macOS 启动脚本默认使用 Playwright Chromium，因此 `EXE_PATH` 可以留空。
+
+3.在项目目录运行：
+
+```bash
+chmod +x run_macos.sh
+./run_macos.sh
+```
+
+脚本会自动创建 `.venv`、安装 Python 依赖、安装 Playwright Chromium，并启动 `Autovisor.py`。
+
+4.如需改用本机 Chrome，可执行：
+
+```bash
+AUTOVISOR_DRIVER=chrome ./run_macos.sh
+```
+
+5.macOS 不支持本项目原有的 Windows 自动隐藏/前置浏览器窗口功能。如果设置 `enableHideWindow=True`，程序会跳过该功能并继续运行；需要安全验证时请手动切换到浏览器窗口。
 
 ------
 
@@ -141,4 +170,3 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 **作者的CSDN:** [欢迎关注~](https://blog.csdn.net/Runfreeone)
 
 **声明：本程序只可用于学习和研究计算机原理, 请于24h删除所有存档 ! **
-

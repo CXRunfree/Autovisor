@@ -1,19 +1,30 @@
-import ctypes
 import json
 import os
 import os.path
+import platform
 from typing import List
 from playwright.async_api import Page, Locator
 from playwright.async_api import TimeoutError
 from playwright._impl._errors import TargetClosedError
-from pygetwindow import Win32Window
 
 from modules.configs import Config
+from modules.lesson_navigation import get_catalog_selectors
 import time
-import pygetwindow as gw
 from modules.logger import Logger
 
 logger = Logger()
+
+try:
+    import ctypes
+except ImportError:
+    ctypes = None
+
+try:
+    import pygetwindow as gw
+    from pygetwindow import Win32Window
+except ImportError:
+    gw = None
+    Win32Window = object
 
 
 def get_runtime_root():
@@ -22,6 +33,10 @@ def get_runtime_root():
 
 def get_runtime_path(*parts):
     return os.path.join(get_runtime_root(), *parts)
+
+
+def supports_window_control():
+    return platform.system() == "Windows" and gw is not None
 
 def save_cookies(cookies, filename="cookies.json"):
     """保存登录Cookies到文件"""
@@ -45,6 +60,9 @@ def clear_cookies(filename="cookies.json"):
 
 # 将python终端前置
 def bring_console_to_front():
+    if not supports_window_control() or ctypes is None or not hasattr(ctypes, "windll"):
+        logger.warn("当前系统不支持自动前置控制台窗口,已跳过.")
+        return
     # 获取当前控制台窗口句柄
     hwnd = ctypes.windll.kernel32.GetConsoleWindow()
     if hwnd:
@@ -53,6 +71,9 @@ def bring_console_to_front():
 
 
 async def display_window(page: Page) -> None:
+    if not supports_window_control():
+        logger.warn("当前系统不支持自动显示播放窗口,请手动切换到浏览器.")
+        return
     window = await get_browser_window(page)
     if window:
         window.show()
@@ -64,6 +85,9 @@ async def display_window(page: Page) -> None:
 
 
 async def hide_window(page: Page) -> None:
+    if not supports_window_control():
+        logger.warn("当前系统不支持自动隐藏播放窗口,已跳过.")
+        return
     window = await get_browser_window(page)
     if window:
         window.hide()
@@ -73,6 +97,8 @@ async def hide_window(page: Page) -> None:
 
 
 async def get_browser_window(page: Page) -> Win32Window | None:
+    if not supports_window_control():
+        return None
     custom_title = "Autovisor - Playwright"
     await page.wait_for_load_state("domcontentloaded")
     await page.evaluate(f'document.title = "{custom_title}"')
@@ -94,6 +120,9 @@ async def evaluate_js(page: Page, wait_selector, js: str, timeout=None, is_hike_
     except TargetClosedError as e:
         logger.debug(f"浏览器关闭时停止执行页面脚本: {logger.summarize_exception(e)}")
         return
+    except TimeoutError as e:
+        logger.debug(f"页面脚本等待选择器超时,已跳过. Selector: {wait_selector} {logger.summarize_exception(e)}")
+        return
     except Exception as e:
         logger.log_exception(f"执行页面脚本失败. Selector: {wait_selector} JS: {js}", e)
         return
@@ -108,6 +137,9 @@ async def evaluate_on_element(page: Page, selector: str, js: str, timeout: float
     except TargetClosedError as e:
         logger.debug(f"浏览器关闭时停止执行元素脚本: {logger.summarize_exception(e)}")
         return
+    except TimeoutError as e:
+        logger.debug(f"元素脚本等待选择器超时,已跳过. Selector: {selector} {logger.summarize_exception(e)}")
+        return
     except Exception as e:
         logger.log_exception(f"执行元素脚本失败. Selector: {selector} JS: {js}", e)
         return
@@ -116,7 +148,7 @@ async def evaluate_on_element(page: Page, selector: str, js: str, timeout: float
 async def optimize_page(page: Page, config: Config, is_new_version=False, is_hike_class=False) -> None:
     try:
         #await page.wait_for_load_state("domcontentloaded")
-        await evaluate_js(page, ".studytime-div", config.pop_js, None, is_hike_class)
+        await evaluate_js(page, ".studytime-div", config.pop_js, 1500, is_hike_class)
         if not is_new_version:
             if not is_hike_class:
                 hour = time.localtime().tm_hour
@@ -148,7 +180,30 @@ async def get_video_attr(page, attr: str) -> any:
         return None
 
 
-async def get_lesson_name(page: Page, is_hike_class=False) -> str:
+async def get_optional_text(page: Page, selector: str, timeout=2000) -> str | None:
+    try:
+        element = await page.wait_for_selector(selector, timeout=timeout)
+        return await element.text_content()
+    except TimeoutError:
+        logger.debug(f"读取可选文本超时,已跳过. Selector: {selector}")
+        return None
+    except TargetClosedError as e:
+        logger.debug(f"浏览器关闭时停止读取可选文本: {logger.summarize_exception(e)}")
+        return None
+    except Exception as e:
+        logger.log_exception(f"读取可选文本失败. Selector: {selector}", e)
+        return None
+
+
+async def get_lesson_name(page: Page, is_hike_class=False, is_new_version=False) -> str:
+    if is_new_version:
+        title = await get_optional_text(page, ".chapter-content-second.current .item-name", timeout=1000)
+        if title:
+            return title.strip()
+        title = await get_optional_text(page, ".chapter-content-second.current", timeout=1000)
+        if title:
+            return " ".join(title.split())
+        return "当前课时"
     if is_hike_class:
         #title_ele1 = await page.wait_for_selector("#sourceTit")
         title_ele = await page.wait_for_selector("span")
@@ -162,18 +217,14 @@ async def get_lesson_name(page: Page, is_hike_class=False) -> str:
 
 
 async def get_filtered_class(page: Page, is_new_version=False, is_hike_class=False, include_all=False) -> List[Locator]:
+    selectors = get_catalog_selectors(is_new_version, is_hike_class)
     try:
-        if is_new_version:
-            await page.wait_for_selector(".progress-num", timeout=2000)
-        if is_hike_class:
-            await page.wait_for_selector(".icon-finish", timeout=2000)
-        else:
-            await page.wait_for_selector(".time_icofinish", timeout=2000)
+        await page.wait_for_selector(selectors.item, timeout=2000)
     except TimeoutError:
         pass
 
     if is_hike_class:
-        all_class = await page.locator(".file-item").all()
+        all_class = await page.locator(selectors.item).all()
         if include_all:
             pass
             # logger.debug(f"Get to-review class: {len(all_class)}")
@@ -181,27 +232,27 @@ async def get_filtered_class(page: Page, is_new_version=False, is_hike_class=Fal
         else:
             to_learn_class = []
             for each in all_class:
-                isDone = await each.locator(".icon-finish").count()
+                isDone = await each.locator(selectors.finish).count()
                 if not isDone:
                     to_learn_class.append(each)
-            logger.debug(f"Get to-learn class: {len(all_class)}")
+            logger.debug(f"Get to-learn class: {len(to_learn_class)}")
             return to_learn_class
 
     else:
-        all_class = await page.locator(".clearfix.video").all()
+        all_class = await page.locator(selectors.item).all()
         if include_all:
             logger.debug(f"Get to-review class: {len(all_class)}")
             return all_class
         else:
             to_learn_class = []
             for each in all_class:
+                if is_new_version and not await each.is_visible():
+                    continue
                 if is_new_version:
-                    progress = await each.locator(".progress-num").text_content()
-                    isDone = progress == "100%"
+                    isDone = await each.locator(selectors.finish).count()
                 else:
-                    isDone = await each.locator(".time_icofinish").count()
+                    isDone = await each.locator(selectors.finish).count()
                 if not isDone:
                     to_learn_class.append(each)
-            logger.debug(f"Get to-learn class: {len(all_class)}")
+            logger.debug(f"Get to-learn class: {len(to_learn_class)}")
             return to_learn_class
-
