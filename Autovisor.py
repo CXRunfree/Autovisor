@@ -326,7 +326,9 @@ if __name__ == "__main__":
     try:
         print("====== Init Log ======")
         logger.info("程序启动中...")
-        config = Config("configs.ini")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(base_dir, "configs.ini")
+        config=Config(config_path)
         if not config.course_urls:
             logger.error("未检测到有效网址或不支持此类网页,请检查配置文件!")
             time.sleep(2)
