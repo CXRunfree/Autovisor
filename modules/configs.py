@@ -1,5 +1,6 @@
 # encoding=utf-8
 import configparser
+import os
 import re
 
 
@@ -14,7 +15,15 @@ class Config:
             self.username = self._config.get('user-account', 'username', raw=True)
             self.password = self._config.get('user-account', 'password', raw=True)
             # 浏览器选项
-            self.exe_path = self._config.get('browser-option', 'EXE_PATH', raw=True)
+            self.exe_path = os.path.expanduser(
+                self._config.get('browser-option', 'EXE_PATH', raw=True, fallback='').strip()
+            )
+            self.attach_existing_chrome = self.get_bool_field(
+                'browser-option', 'attachExistingChrome', fallback=False
+            )
+            self.cdp_url = self._config.get(
+                'browser-option', 'cdpUrl', raw=True, fallback='http://127.0.0.1:9222'
+            ).strip()
             # 脚本选项
             self.enableAutoCaptcha = self.get_bool_field('script-option', 'enableAutoCaptcha')
             self.enableHideWindow = self.get_bool_field('script-option', 'enableHideWindow')
@@ -32,7 +41,6 @@ class Config:
         self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
 
         # 视频元素修改
-        self.remove_pause = "document.querySelector('video').pause = ()=>{}"
         self.play_video = '''const video = document.querySelector('video');video.play();'''
         self.volume_none = "document.querySelector('video').volume=0;"
         self.set_none_icon = '''document.querySelector(".volumeBox").classList.add("volumeNone")'''
@@ -62,18 +70,19 @@ class Config:
             driver = "edge"
         return driver.lower()
 
-    def get_bool_field(self, section: str, option: str) -> bool:
-        field = self._config.get(section, option, raw=True).lower()
-        if field == "true":
-            return True
-        else:
-            return False
+    def get_bool_field(self, section: str, option: str, fallback: bool = False) -> bool:
+        field = self._config.get(
+            section, option, raw=True, fallback=str(fallback)
+        ).strip().lower()
+        return field == "true"
 
     def get_course_urls(self) -> list:
         course_urls = []
         _options = self._config.options("course-url")
         for _option in _options:
             course_url = self._config.get("course-url", _option, raw=True)
+            if not course_url.strip():
+                continue
             matched = re.findall(self.course_match_rule, course_url)
             if not matched:
                 print(f"\"{course_url.strip()}\"\n不是一个有效网址,将忽略该网址.")

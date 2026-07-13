@@ -1,0 +1,25 @@
+[project]
+name = "autovisor"
+version = "3.17.2"
+description = "Cross-platform browser automation for Zhihuishu courses"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "httpx>=0.28,<1",
+    "pillow>=10,<13",
+    "playwright>=1.49,<2",
+    "pygetwindow>=0.0.9; sys_platform == 'win32'",
+    "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+captcha = [
+    "numpy>=2,<3",
+    "opencv-python>=4.10,<5",
+]
+gui = [
+    "sv-ttk>=2.6,<3",
+]
+
+[tool.uv]
+package = false

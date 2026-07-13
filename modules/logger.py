@@ -21,11 +21,15 @@ class Logger:
         self.runtime_root = self.get_runtime_root()
         self.log_dir = os.path.join(self.runtime_root, "logs")
         os.makedirs(self.log_dir, exist_ok=True)
+        if os.name != "nt":
+            os.chmod(self.log_dir, 0o700)
         new_index = len(os.listdir(self.log_dir)) + 1
         self.filename = os.path.join(self.log_dir, f"Log{new_index}.txt")
         self._write_lock = threading.Lock()
         with open(self.filename, "w", encoding="utf-8"):
             pass
+        if os.name != "nt":
+            os.chmod(self.filename, 0o600)
 
     @staticmethod
     def get_runtime_root():
