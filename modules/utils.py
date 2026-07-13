@@ -1,17 +1,28 @@
-import ctypes
 import json
 import os
 import os.path
-from typing import List
+import sys
+import tempfile
 from playwright.async_api import Page, Locator
 from playwright.async_api import TimeoutError
 from playwright._impl._errors import TargetClosedError
-from pygetwindow import Win32Window
-
 from modules.configs import Config
+from modules.lesson_navigation import (
+    CatalogSelectors,
+    get_lesson_title,
+    lesson_is_complete,
+)
 import time
-import pygetwindow as gw
 from modules.logger import Logger
+
+if sys.platform == "win32":
+    import ctypes
+    import pygetwindow as gw
+    from pygetwindow import Win32Window
+else:
+    ctypes = None
+    gw = None
+    Win32Window = object
 
 logger = Logger()
 
@@ -25,8 +36,25 @@ def get_runtime_path(*parts):
 
 def save_cookies(cookies, filename="cookies.json"):
     """保存登录Cookies到文件"""
-    with open(filename, 'w') as f:
-        json.dump(cookies, f)
+    filename = os.fspath(filename)
+    directory = os.path.dirname(os.path.abspath(filename))
+    fd, temp_path = tempfile.mkstemp(prefix=".cookies-", dir=directory)
+    try:
+        if os.name != "nt":
+            os.chmod(temp_path, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(cookies, file)
+        os.replace(temp_path, filename)
+        if os.name != "nt":
+            os.chmod(filename, 0o600)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
 
 def load_cookies(filename="cookies.json"):
     """从文件加载 Cookies"""
@@ -39,20 +67,74 @@ def load_cookies(filename="cookies.json"):
         return None
 
 
+def normalize_zhihuishu_cookies(cookies, now=None):
+    now = time.time() if now is None else now
+    normalized = []
+    for cookie in cookies:
+        domain = str(cookie.get("domain") or "").strip()
+        normalized_domain = domain.lstrip(".").lower()
+        name = str(cookie.get("name") or "").strip()
+        valid_domain = normalized_domain == "zhihuishu.com" or normalized_domain.endswith(
+            ".zhihuishu.com"
+        )
+        if not name or not valid_domain:
+            continue
+        expires = cookie.get("expires", cookie.get("expirationDate"))
+        if isinstance(expires, (int, float)) and expires > 0 and expires <= now:
+            continue
+        item = {
+            "name": name,
+            "value": str(cookie.get("value") or ""),
+            "domain": domain,
+            "path": cookie.get("path") or "/",
+            "secure": bool(cookie.get("secure", False)),
+        }
+        if isinstance(expires, (int, float)) and expires > now:
+            item["expires"] = float(expires)
+        rest = cookie.get("rest") or {}
+        if rest.get("HttpOnly") is True or cookie.get("httpOnly") is True:
+            item["httpOnly"] = True
+        same_site = rest.get("SameSite") or cookie.get("sameSite")
+        if same_site in {"Strict", "Lax", "None"}:
+            item["sameSite"] = same_site
+        normalized.append(item)
+    return normalized
+
+
+def import_zhihuishu_cookies(source, destination="cookies.json") -> int:
+    with open(source, "r", encoding="utf-8") as file:
+        raw = json.load(file)
+    if not isinstance(raw, list):
+        raise ValueError("Cookie 文件必须是列表格式")
+    cookies = normalize_zhihuishu_cookies(raw)
+    if not cookies:
+        raise ValueError("Cookie 文件中没有可用的智慧树 Cookie")
+    save_cookies(cookies, destination)
+    return len(cookies)
+
+
 def clear_cookies(filename="cookies.json"):
     if os.path.exists(filename):
         os.remove(filename)
 
 # 将python终端前置
 def bring_console_to_front():
+    if sys.platform != "win32":
+        return False
     # 获取当前控制台窗口句柄
     hwnd = ctypes.windll.kernel32.GetConsoleWindow()
     if hwnd:
         ctypes.windll.user32.ShowWindow(hwnd, 5)  # SW_SHOW
         ctypes.windll.user32.SetForegroundWindow(hwnd)
+        return True
+    return False
 
 
 async def display_window(page: Page) -> None:
+    if sys.platform != "win32":
+        await page.bring_to_front()
+        logger.info("播放标签页已前置.", shift=True)
+        return
     window = await get_browser_window(page)
     if window:
         window.show()
@@ -64,6 +146,9 @@ async def display_window(page: Page) -> None:
 
 
 async def hide_window(page: Page) -> None:
+    if sys.platform != "win32":
+        logger.warn("macOS 不支持隐藏单个 Chrome 窗口,将保持可见以便处理验证.")
+        return
     window = await get_browser_window(page)
     if window:
         window.hide()
@@ -72,7 +157,9 @@ async def hide_window(page: Page) -> None:
         logger.warn("未找到播放窗口!")
 
 
-async def get_browser_window(page: Page) -> Win32Window | None:
+async def get_browser_window(page: Page) -> object | None:
+    if sys.platform != "win32":
+        return None
     custom_title = "Autovisor - Playwright"
     await page.wait_for_load_state("domcontentloaded")
     await page.evaluate(f'document.title = "{custom_title}"')
@@ -113,19 +200,26 @@ async def evaluate_on_element(page: Page, selector: str, js: str, timeout: float
         return
 
 
-async def optimize_page(page: Page, config: Config, is_new_version=False, is_hike_class=False) -> None:
+async def optimize_page(
+    page: Page, config: Config, catalog: CatalogSelectors
+) -> None:
     try:
-        #await page.wait_for_load_state("domcontentloaded")
-        await evaluate_js(page, ".studytime-div", config.pop_js, None, is_hike_class)
-        if not is_new_version:
-            if not is_hike_class:
-                hour = time.localtime().tm_hour
-                if hour >= 18 or hour < 7:
-                    await evaluate_on_element(page, ".Patternbtn-div", "el=>el.click()", timeout=1500)
-                await evaluate_on_element(page, ".exploreTip", "el=>el.remove()", timeout=1500)
-                await evaluate_on_element(page, ".ai-helper-Index2", "el=>el.remove()", timeout=1500)
-                await evaluate_on_element(page, ".aiMsg.once", "el=>el.remove()", timeout=1500)
-                logger.info("页面优化完成!")
+        preread_close = page.locator(
+            ".ss2077-custom-modal .ss2077-custom-dialog:visible "
+            ".ss2077-custom-title > img.icon"
+        ).first
+        if await preread_close.count() and await preread_close.is_visible():
+            await preread_close.click(timeout=2000)
+            logger.info("已关闭学前必读弹窗.")
+
+        if catalog.name == "legacy":
+            await evaluate_js(page, ".studytime-div", config.pop_js)
+            hour = time.localtime().tm_hour
+            if hour >= 18 or hour < 7:
+                await evaluate_on_element(page, ".Patternbtn-div", "el=>el.click()", timeout=1500)
+            await evaluate_on_element(page, ".exploreTip", "el=>el.remove()", timeout=1500)
+            await evaluate_on_element(page, ".ai-helper-Index2", "el=>el.remove()", timeout=1500)
+            await evaluate_on_element(page, ".aiMsg.once", "el=>el.remove()", timeout=1500)
 
     except TargetClosedError as e:
         logger.debug(f"浏览器关闭时停止页面优化: {logger.summarize_exception(e)}")
@@ -148,60 +242,28 @@ async def get_video_attr(page, attr: str) -> any:
         return None
 
 
-async def get_lesson_name(page: Page, is_hike_class=False) -> str:
-    if is_hike_class:
-        #title_ele1 = await page.wait_for_selector("#sourceTit")
-        title_ele = await page.wait_for_selector("span")
-        await page.wait_for_timeout(500)
-        title = await title_ele.get_attribute("title")
-    else:
-        title_ele = await page.wait_for_selector("#lessonOrder")
-        await page.wait_for_timeout(500)
-        title = await title_ele.get_attribute("title")
-    return title
+async def get_lesson_name(
+    page: Page, lesson: Locator, catalog: CatalogSelectors
+) -> str:
+    return await get_lesson_title(page, lesson, catalog)
 
 
-async def get_filtered_class(page: Page, is_new_version=False, is_hike_class=False, include_all=False) -> List[Locator]:
+async def get_filtered_class(
+    page: Page, catalog: CatalogSelectors, include_all=False
+) -> list[Locator]:
     try:
-        if is_new_version:
-            await page.wait_for_selector(".progress-num", timeout=2000)
-        if is_hike_class:
-            await page.wait_for_selector(".icon-finish", timeout=2000)
-        else:
-            await page.wait_for_selector(".time_icofinish", timeout=2000)
+        await page.wait_for_selector(catalog.item, timeout=2000)
     except TimeoutError:
         pass
 
-    if is_hike_class:
-        all_class = await page.locator(".file-item").all()
-        if include_all:
-            pass
-            # logger.debug(f"Get to-review class: {len(all_class)}")
-            # return all_class
-        else:
-            to_learn_class = []
-            for each in all_class:
-                isDone = await each.locator(".icon-finish").count()
-                if not isDone:
-                    to_learn_class.append(each)
-            logger.debug(f"Get to-learn class: {len(all_class)}")
-            return to_learn_class
+    all_class = await page.locator(catalog.item).all()
+    if include_all:
+        logger.debug(f"Get to-review class: {len(all_class)}")
+        return all_class
 
-    else:
-        all_class = await page.locator(".clearfix.video").all()
-        if include_all:
-            logger.debug(f"Get to-review class: {len(all_class)}")
-            return all_class
-        else:
-            to_learn_class = []
-            for each in all_class:
-                if is_new_version:
-                    progress = await each.locator(".progress-num").text_content()
-                    isDone = progress == "100%"
-                else:
-                    isDone = await each.locator(".time_icofinish").count()
-                if not isDone:
-                    to_learn_class.append(each)
-            logger.debug(f"Get to-learn class: {len(all_class)}")
-            return to_learn_class
-
+    to_learn_class = []
+    for each in all_class:
+        if not await lesson_is_complete(each, catalog):
+            to_learn_class.append(each)
+    logger.debug(f"Get to-learn class: {len(to_learn_class)} / {len(all_class)}")
+    return to_learn_class

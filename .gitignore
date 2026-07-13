@@ -9,6 +9,7 @@ res/*
 __pycache__/
 .vscode/
 .venv/
+configs.local.ini
 captcha/
 logs/
 ./preview/*

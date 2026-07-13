@@ -75,6 +75,47 @@
 
 (如果未设置 **enableAutoCaptcha=True**, 则需要**手动完成**登录时的滑块验证)
 
+#### macOS 源码运行
+
+macOS 版本使用 `uv` 管理隔离的 Python 3.13 环境，默认启动独立、可见的系统 Chrome。第一次运行时可手动登录，也可从现有工具安全导入智慧树 Cookie；本地 `res/cookies.json` 权限固定为 `0600`。实验性的 CDP 模式才会连接日常 Chrome，并且只新建、关闭 Autovisor 自己的标签页。
+
+若已有 Requests/CookieJar JSON，可先安全导入。导入器会丢弃其他域名、空域名和过期项，不会输出 Cookie 值：
+
+```bash
+./run_macos.sh --import-cookies /path/to/cookies.json
+```
+
+```bash
+./run_macos.sh --check-browser
+```
+
+这条命令只验证 Chrome 启动和智慧树登录状态，不进入课程。首次使用先复制 macOS 模板，并在不会提交到 Git 的 `configs.local.ini` 填入课程链接：
+
+```bash
+install -m 600 configs.macos.ini configs.local.ini
+```
+
+优先使用 Cookie 导入或浏览器手动登录，避免把账号密码写入配置。`run_macos.sh` 会优先读取本地配置并再次收紧其权限，然后可执行只读课程检查：
+
+```bash
+./run_macos.sh --check-course 'https://studywisdomh5.zhihuishu.com/study/index?recruitAndCourseId=...'
+```
+
+课程检查会阻止媒体下载和已知进度上报接口，只报告页面使用的新旧目录选择器。当前智慧共享课目录会识别 `.child-info.hasvideo`、项内完成标记和 `aria-valuenow` 进度。确认识别成功后执行：
+
+```bash
+./run_macos.sh
+```
+
+macOS 注意事项：
+
+- `driver = Chrome`，`EXE_PATH` 通常留空即可。
+- `attachExistingChrome = False` 是稳定默认值，程序启动隔离窗口并只保存智慧树 Cookie。
+- 实验性的附着模式可设为 `True`，需要先在 `chrome://inspect/#remote-debugging` 勾选允许远程调试。Chrome 150 会通过本机 `DevToolsActivePort` 动态公布端点，程序不会把瞬时 endpoint 写入配置或日志。
+- `enableHideWindow = False`，课中安全验证需要保持窗口可见并手动完成。
+- 自动滑块为可选功能；启用前运行 `uv sync --extra captcha`。它只处理登录页滑块，不能绕过课中安全验证。
+- 当前智慧共享课的课中弹题会暂停播放并等待手动处理；“平时测试”和期末考试不属于视频播放流程，本版本不会自动作答或提交。
+
 ------
 
 #### 三、发行版下载:
@@ -141,4 +182,3 @@ Github: [Releases · CXRunfree/Autovisor (github.com)](https://github.com/CXRunf
 **作者的CSDN:** [欢迎关注~](https://blog.csdn.net/Runfreeone)
 
 **声明：本程序只可用于学习和研究计算机原理, 请于24h删除所有存档 ! **
-
