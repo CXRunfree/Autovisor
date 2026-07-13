@@ -89,10 +89,12 @@ async def learn_lesson(
                 await wait_until_verification_hidden(page)
                 paused_time += time.time() - wait_start
                 synced_to_catalog = False
+                retry_count = 0
                 last_activity = time.monotonic()
                 continue
             if await has_visible_element(page, (".topic-title",)):
                 paused_time += await _wait_for_topic_hidden(page)
+                retry_count = 0
                 last_activity = time.monotonic()
                 continue
 

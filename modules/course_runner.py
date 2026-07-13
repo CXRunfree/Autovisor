@@ -92,9 +92,9 @@ async def run_course(
             logger.info(f"当前课程已达时限:{config.limitMaxTime}min", shift=True)
             logger.info("即将进入下门课程!")
             return CourseOutcome.TIME_LIMIT
-        if learning and not completed:
+        if not completed:
             logger.warn(
-                f'"{title}" 未能确认平台进度,本轮停止切换下一课.',
+                f'"{title}" 未能确认播放完成,本轮停止切换下一课.',
                 shift=True,
             )
             return CourseOutcome.FAILED
