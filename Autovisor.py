@@ -17,6 +17,14 @@ from modules.slider import slider_verify
 from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify, task_monitor
 from modules import installer
 from modules.banner import print_banner
+from modules.login import (
+    LOGIN_PASSWORD_SELECTOR,
+    LOGIN_SUBMIT_SELECTOR,
+    LOGIN_USERNAME_SELECTOR,
+    accept_login_terms,
+    is_login_page,
+    wait_for_login_complete,
+)
 
 # 获取全局事件循环
 event_loop_verify = asyncio.Event()
@@ -72,43 +80,57 @@ async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
     return page, context
 
 async def auto_login(context: BrowserContext, page: Page, modules=None):
-    cookie_saved = False
-
-    async def request_handler(request):
-        nonlocal cookie_saved
-        if cookie_saved:
-            return
-        if "https://www.zhihuishu.com" in request.url:
-            cookies = await context.cookies()
-            save_cookies(cookies, COOKIE_PATH)
-            logger.info(f"已保存登录凭证到: {COOKIE_PATH},下次可免密登录.")
-            cookie_saved = True
-
     await page.goto(config.login_url, wait_until="commit")
-    if "login" not in page.url:
+    if not is_login_page(page.url):
         logger.info("检测到已登录,跳过登录步骤.")
         return
-    await page.wait_for_selector(".wall-main", state='attached')  # 等待登陆界面加载
-    page.on('request', request_handler)
+
     if config.username and config.password:
-        await page.wait_for_selector("#lUsername", state="attached")
-        await page.wait_for_selector("#lPassword", state="attached")
-        await page.locator('#lUsername').fill(config.username)
-        await page.locator('#lPassword').fill(config.password)
-        await page.wait_for_selector(".wall-sub-btn", state="attached")
-        await page.wait_for_timeout(500)
-        await page.locator(".wall-sub-btn").first.click()
+        try:
+            username = await page.wait_for_selector(
+                LOGIN_USERNAME_SELECTOR, state="visible", timeout=30000
+            )
+            password = await page.wait_for_selector(
+                LOGIN_PASSWORD_SELECTOR, state="visible", timeout=30000
+            )
+            await username.fill(config.username)
+            await password.fill(config.password)
+            await accept_login_terms(page)
+            submit = await page.wait_for_selector(
+                LOGIN_SUBMIT_SELECTOR, state="visible", timeout=30000
+            )
+            await page.wait_for_timeout(500)
+            await submit.click()
+        except TimeoutError:
+            if is_login_page(page.url):
+                logger.warn("未找到自动登录控件,请在浏览器中手动完成登录.", shift=True)
+
+    captcha_task = None
     if config.enableAutoCaptcha and modules:
-        await slider_verify(page, modules)
-    await page.wait_for_selector(".wall-main", state='hidden')
+        captcha_task = asyncio.create_task(slider_verify(page, modules))
+
+    try:
+        await wait_for_login_complete(page)
+    finally:
+        if captcha_task:
+            if not captcha_task.done():
+                captcha_task.cancel()
+            await asyncio.gather(captcha_task, return_exceptions=True)
+
+    cookies = await context.cookies()
+    save_cookies(cookies, COOKIE_PATH)
+    logger.info(f"已保存登录凭证到: {COOKIE_PATH},下次可免密登录.")
 
 
 async def ensure_login(context: BrowserContext, page: Page, cookies, modules=None):
     if cookies:
         logger.info("正在校验 Cookies 登录状态...")
         await page.goto(config.login_url, wait_until="domcontentloaded")
-        await page.wait_for_timeout(1500)
-        if "login" not in page.url:
+        try:
+            await wait_for_login_complete(page, timeout=10000)
+        except TimeoutError:
+            pass
+        if not is_login_page(page.url):
             logger.info("使用Cookies登录成功!")
             return True
         logger.warn("检测到 Cookies 已失效, 将重新登录.", shift=True)
