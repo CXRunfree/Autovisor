@@ -96,12 +96,11 @@ async def slider_verify(page: Page, modules: list[ModuleType]):
     isPassed = 0
     for x in range(0, 3):
         try:
-            await page.wait_for_selector(".wall-main", state="attached")
-            await page.wait_for_selector(".yidun_bgimg", state="attached")
+            await page.wait_for_selector(".yidun_bgimg", state="visible")
             logger.info(f"第{x + 1}次尝试过滑块验证...")
             max_loc = await progress_img(page)
             await move_slider(page, max_loc[0])
-            await page.wait_for_selector(".wall-main", state='hidden', timeout=3000)
+            await page.wait_for_selector(".yidun_bgimg", state='hidden', timeout=3000)
             isPassed = 1
             break
         except TimeoutError:
