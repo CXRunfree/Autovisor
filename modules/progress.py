@@ -86,6 +86,9 @@ def show_course_progress(desc, cur_time=None, limit_time=0):
 
 # 打印通用版进度条
 def show_progress(desc, current, total, suffix="", width=30):
+    if total <= 0:
+        print(f"\r{desc} 已下载 {current} bytes\t{suffix}".ljust(50), end="", flush=True)
+        return
     percent = int(current / total * 100)
     length = int(percent * width // 100)
     progress = ("█" * length).ljust(width, " ")

@@ -1,9 +1,12 @@
 build/
 dist/
-res/*
-!res/QRcode.jpg
-!res/stealth.min.js
-!res/zhs.ico
+packages/*
+data/*
+resources/*
+!data/mirrors.json
+!resources/QRcode.jpg
+!resources/stealth.min.js
+!resources/zhs.ico
 .obsidian/
 .idea/
 __pycache__/
@@ -12,3 +15,4 @@ __pycache__/
 captcha/
 logs/
 ./preview/*
+*.egg-info/

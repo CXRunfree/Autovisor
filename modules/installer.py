@@ -6,6 +6,7 @@ import os
 import shutil
 import glob
 import requests
+from urllib.parse import urldefrag, urljoin
 from importlib import import_module
 from modules.progress import show_progress
 from modules.logger import Logger
@@ -59,6 +60,11 @@ def is_compatible_wheel(filename, package, version, python_tag, abi_tag, platfor
     return python_ok and abi_ok
 
 
+def build_wheel_url(package_url, wheel_link):
+    link, _ = urldefrag(wheel_link)
+    return urljoin(package_url, link)
+
+
 def normalize_version(package, version):
     if package == "opencv-python":
         return ".".join(version.split(".")[:3])
@@ -72,7 +78,7 @@ def get_runtime_root():
 
 
 def get_res_dir():
-    return os.path.join(get_runtime_root(), "res")
+    return os.path.join(get_runtime_root(), "packages")
 
 
 def add_runtime_search_paths(res_dir):
@@ -93,22 +99,24 @@ def add_runtime_search_paths(res_dir):
                 pass
 
 
-def test_mirrors():
-    for name, url in config.mirrors.items():
+def test_mirrors(config_obj=config):
+    available_mirrors = []
+    for name, url in config_obj.mirrors.items():
         logger.info(f"正在测试 {name} 镜像源...")
         try:
-            response = requests.get(url + "/simple/0", headers=config.headers, timeout=5)  # 设置超时，避免卡住
+            response = requests.get(url + "/simple/0", headers=config_obj.headers, timeout=5)  # 设置超时，避免卡住
             if response.status_code == 200:
                 logger.info(f"{name} 镜像源 连接成功！")
-                return name, url
+                available_mirrors.append((name, url))
             else:
                 logger.error(f"{name} 镜像源 连接失败（状态码 {response.status_code}）！")
         except requests.exceptions.RequestException as e:
             logger.error(f"{name} 镜像源 连接失败：{e}")
             continue
 
-    logger.error("所有镜像源都不可用！")
-    return None, None
+    if not available_mirrors:
+        logger.error("所有镜像源都不可用！")
+    return available_mirrors
 
 
 def extract_whl(whl_path, extract_to):
@@ -143,13 +151,13 @@ def get_system_arch():
         return "win32"
 
 
-def download_wheel(mirror_name, base_url, package_name, version=None):
+def download_wheel(mirror_name, base_url, package_name, version=None, config_obj=config):
     # 构造 URL
     package_url = f"{base_url}/simple/{package_name}/"
 
     # 发送请求，找到匹配的 .whl 文件
     logger.info(f"正在从镜像源下载 {package_name}.whl 文件...")
-    response = requests.get(package_url, headers=config.headers)
+    response = requests.get(package_url, headers=config_obj.headers)
     response.raise_for_status()
     validate_python_version()
     # 获取当前 Python 与系统架构
@@ -166,17 +174,22 @@ def download_wheel(mirror_name, base_url, package_name, version=None):
     wheel_link = whl_links[0]
 
     # 拼接完整 URL
-    wheel_url = f"{base_url}/{wheel_link}" if mirror_name != "官方" else wheel_link
-    whl_path = wheel_url.split('/')[-1].split("#")[0]
+    wheel_url = build_wheel_url(package_url, wheel_link)
+    whl_path = os.path.basename(wheel_url)
 
     # 下载 .whl 文件
-    response = requests.get(wheel_url, headers=config.headers, stream=True)
+    response = requests.get(wheel_url, headers=config_obj.headers, stream=True)
+    response.raise_for_status()
     total_size = int(response.headers.get('content-length', 0))
     with open(whl_path, 'wb') as f:
         for chunk in response.iter_content(chunk_size=512):
             if chunk:
                 f.write(chunk)
                 show_progress("下载进度:", current=f.tell(), total=total_size)
+
+    if not zipfile.is_zipfile(whl_path):
+        os.remove(whl_path)
+        raise ValueError(f"下载的 {whl_path} 不是有效的 wheel 文件,请检查镜像源响应。")
 
     logger.info(f"{whl_path} 下载完成！")
     return whl_path
@@ -197,44 +210,48 @@ def is_installed(package, version):
         return None, False
 
 
-def install_package(package, version, mirror_name, base_url):
+def install_package(package, version, mirrors, config_obj=config):
     alias = mapping[package]
     res_dir = get_res_dir()
     logger.info(f"{package}-{version} 未安装，开始下载...")
 
-    try:
-        wheel_path = download_wheel(mirror_name, base_url, package, version)
-        clear_package_files(package, res_dir)
-        extract_whl(wheel_path, res_dir)
-        add_runtime_search_paths(res_dir)
-        logger.info(f"{package}-{version} 安装完成!")
+    for mirror_name, base_url in mirrors:
+        wheel_path = None
+        try:
+            wheel_path = download_wheel(mirror_name, base_url, package, version, config_obj)
+            clear_package_files(package, res_dir)
+            extract_whl(wheel_path, res_dir)
+            add_runtime_search_paths(res_dir)
+            module = import_module(alias)
+            logger.info(f"{package}-{version} 安装完成!")
+            return module
+        except Exception as e:
+            logger.error(f"{package}-{version} 使用 {mirror_name} 镜像源失败，将尝试下一个镜像源：{e}")
+        finally:
+            if wheel_path and os.path.exists(wheel_path):
+                os.remove(wheel_path)
 
-        os.remove(wheel_path)  # 清理下载的 .whl 文件
-        return import_module(alias)
-
-    except Exception as e:
-        error_message = f"{package}-{version} 处理失败！"
-        logger.log_exception(error_message, e)
-        return None
+    logger.error(f"{package}-{version} 在所有镜像源上的处理都失败！")
+    return None
 
 
 # 下载器,启动!
-def start():
+def start(config_obj=config):
     validate_python_version()
     modules = []
     res_dir = get_res_dir()
     os.makedirs(res_dir, exist_ok=True)
     add_runtime_search_paths(res_dir)
-    mirror_name, base_url = None, None  # 避免重复测试镜像
+    mirrors = None  # 避免重复测试镜像
     for package, version in packages.items():
         module, exist = is_installed(package, version)
         if not exist:
-            if not mirror_name:  # 仅在首次遇到导入失败时测试镜像
-                mirror_name, base_url = test_mirrors()
-                if not mirror_name:  # 如果所有镜像都失败，直接退出
+            if mirrors is None:  # 仅在首次遇到导入失败时测试镜像
+                mirrors = test_mirrors(config_obj)
+                if not mirrors:  # 如果所有镜像都失败，直接退出
                     logger.error("没有可用的镜像源，程序终止!")
                     sys.exit(-1)
-            module = install_package(package, version, mirror_name, base_url)
+            module = install_package(package, version, mirrors, config_obj)
             if not module:
                 logger.save()
                 sys.exit(-1)  # 下载或安装失败，立即退出

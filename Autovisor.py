@@ -4,11 +4,12 @@ import os
 import time
 import traceback
 import sys
+import ctypes
 from playwright.async_api import async_playwright, Playwright, Page, BrowserContext
 from playwright.async_api import TimeoutError
 from playwright._impl._errors import TargetClosedError
 from modules.logger import Logger
-from modules.configs import Config
+from modules.configs import Config, ConfigError
 from modules.progress import get_course_progress, show_course_progress
 from modules.support import show_donate
 from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr, hide_window, \
@@ -29,7 +30,7 @@ from modules.login import (
 # 获取全局事件循环
 event_loop_verify = asyncio.Event()
 event_loop_answer = asyncio.Event()
-COOKIE_PATH = get_runtime_path("res", "cookies.json")
+COOKIE_PATH = get_runtime_path("data", "cookies.json")
 
 
 async def wait_for_interruption(event_loop: asyncio.Event) -> float:
@@ -42,16 +43,26 @@ async def wait_for_interruption(event_loop: asyncio.Event) -> float:
 def cal_time_period(start_time: float, paused_time: float) -> float:
     return max(0.0, time.time() - start_time - paused_time)
 
+
+def get_screen_size():
+    if os.name == "nt":
+        user32 = ctypes.windll.user32
+        return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+    return 1920, 1080
+
+
 async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
     driver = "msedge" if config.driver == "edge" else config.driver
     logger.info(f"正在启动{config.driver}浏览器...")
+    screen_width, screen_height = get_screen_size()
     launch_args = {
         "channel": driver,
         "headless": False,
         "executable_path": config.exe_path if config.exe_path else None,
         "args": [
-            f'--window-size={1600},{900}',
-            '--window-position=100,100',  # 窗口位置
+            "--start-maximized",
+            f"--window-size={screen_width},{screen_height}",
+            "--window-position=0,0",
         ],
     }
     try:
@@ -61,7 +72,8 @@ async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
         logger.info("检测到浏览器首次启动失败,正在重试...")
         await asyncio.sleep(1)
         browser = await p.chromium.launch(**launch_args)
-    context = await browser.new_context()
+    # 使用真实窗口尺寸，避免 Playwright 默认 viewport 覆盖最大化窗口。
+    context = await browser.new_context(viewport=None)
     # 加载 Cookies
     if cookies:
         await context.add_cookies(cookies)
@@ -71,7 +83,7 @@ async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
     page = await context.new_page()
     logger.debug(f"{config.driver}浏览器启动完成.")
     #抹去特征
-    with open('res/stealth.min.js', 'r') as f:
+    with open(get_runtime_path("resources", "stealth.min.js"), 'r') as f:
         js = f.read()
     await page.add_init_script(js)
     logger.debug("stealth.js执行完成.")
@@ -280,7 +292,7 @@ async def main():
     if config.enableAutoCaptcha:
         print("===== Install Log =====")
         logger.info("正在检查依赖库...")
-        modules = installer.start()
+        modules = installer.start(config)
         logger.info("所有依赖库安装完成!")
     print("====== Login Log ======")
     async with async_playwright() as p:
@@ -336,7 +348,7 @@ async def main():
             await working_loop(page, is_new_version=is_new_version, is_hike_class=is_hike_class)
     print("===== Task Finished =====")
     logger.info("所有课程已学习完毕!")
-    show_donate("res/QRcode.jpg", show=config.showDonateCode)
+    show_donate(get_runtime_path("resources", "QRcode.jpg"), show=config.showDonateCode)
     # 结束所有协程任务
     await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
     await monitor_task
@@ -349,9 +361,10 @@ if __name__ == "__main__":
         print("====== Init Log ======")
         logger.info("程序启动中...")
         installer.validate_python_version()
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(base_dir, "configs.ini")
-        config=Config(config_path)
+        mirrors_path = os.path.join(base_dir, "data", "mirrors.json")
+        config=Config(config_path, mirrors_path)
         if not config.course_urls:
             logger.error("未检测到有效网址或不支持此类网页,请检查配置文件!")
             time.sleep(2)
@@ -364,6 +377,9 @@ if __name__ == "__main__":
             logger.info("如果仍然无法启动,请修改配置文件并使用Chrome浏览器")
         else:
             logger.debug(f"浏览器关闭结束运行: {logger.summarize_exception(e)}")
+    except ConfigError as e:
+        logger.error(f"配置文件无效: {e}", shift=True)
+        logger.info("请完整解压发行包，并确保 configs.ini 与 Autovisor.exe 位于同一目录。")
     except Exception as e:
         logger.log_exception("程序运行时出现未处理异常.", e, shift=True)
         if isinstance(e, KeyError):

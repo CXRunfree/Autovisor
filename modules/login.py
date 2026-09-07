@@ -30,10 +30,10 @@ async def wait_for_login_complete(
 
 async def accept_login_terms(page: Page) -> None:
     """新版登录页存在协议复选框时自动勾选。"""
-    terms = page.locator(".privacy-checkbox").first
-    if not await terms.count() or not await terms.is_visible():
+    checkbox = page.locator("input.el-checkbox__original").first
+    if not await checkbox.count():
         return
 
-    checkbox = terms.locator("input[type='checkbox']").first
-    if await checkbox.count() and not await checkbox.is_checked():
-        await terms.click()
+    if not await checkbox.is_checked():
+        # Element UI 的原始 checkbox 通常被隐藏，不能使用 Playwright check。
+        await checkbox.evaluate("element => element.click()")

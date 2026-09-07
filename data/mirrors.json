@@ -1,0 +1,6 @@
+{
+  "Huawei": "https://mirrors.huaweicloud.com/repository/pypi",
+  "Aliyun": "https://mirrors.aliyun.com/pypi",
+  "Tsinghua": "https://pypi.tuna.tsinghua.edu.cn",
+  "Official": "https://pypi.org"
+}
