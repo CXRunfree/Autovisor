@@ -348,6 +348,7 @@ if __name__ == "__main__":
     try:
         print("====== Init Log ======")
         logger.info("程序启动中...")
+        installer.validate_python_version()
         base_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(base_dir, "configs.ini")
         config=Config(config_path)

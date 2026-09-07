@@ -3,6 +3,8 @@ import sys
 import platform
 import zipfile
 import os
+import shutil
+import glob
 import requests
 from importlib import import_module
 from modules.progress import show_progress
@@ -11,6 +13,50 @@ from modules.configs import Config
 
 config = Config()
 logger = Logger()
+
+
+SUPPORTED_PYTHON = ((3, 10), (3, 11), (3, 12))
+
+
+def validate_python_version(version_info=sys.version_info):
+    version = (version_info.major, version_info.minor)
+    if version not in SUPPORTED_PYTHON:
+        supported = ", ".join(f"{major}.{minor}" for major, minor in SUPPORTED_PYTHON)
+        raise RuntimeError(
+            f"不支持 Python {version[0]}.{version[1]}，当前仅支持 Python {supported}。"
+        )
+
+
+def wheel_tags(filename):
+    name = os.path.basename(filename).split("#", 1)[0]
+    if not name.endswith(".whl"):
+        return None
+    parts = name[:-4].rsplit("-", 3)
+    if len(parts) != 4:
+        return None
+    distribution_version, python_tag, abi_tag, platform_tag = parts
+    if "-" not in distribution_version:
+        return None
+    _, version = distribution_version.rsplit("-", 1)
+    return version, python_tag, abi_tag, platform_tag
+
+
+def is_compatible_wheel(filename, package, version, python_tag, abi_tag, platform_tag):
+    tags = wheel_tags(filename)
+    if not tags:
+        return False
+    wheel_version, wheel_python, wheel_abi, wheel_platform = tags
+    requested_version = normalize_version(package, version) if version else None
+    actual_version = normalize_version(package, wheel_version)
+    if (requested_version and actual_version != requested_version) or wheel_platform != platform_tag:
+        return False
+    python_ok = python_tag in wheel_python or "py3" in wheel_python
+    if "abi3" in wheel_abi:
+        match = re.fullmatch(r"cp(\d+)", wheel_python)
+        if match:
+            python_ok = int(python_tag[2:]) >= int(match.group(1))
+    abi_ok = abi_tag in wheel_abi or "abi3" in wheel_abi or "none" in wheel_abi
+    return python_ok and abi_ok
 
 
 def normalize_version(package, version):
@@ -76,6 +122,19 @@ def extract_whl(whl_path, extract_to):
         logger.info(f"已将 {whl_path} 解压到: {extract_to}")
 
 
+def clear_package_files(package, extract_to):
+    package_patterns = {
+        "numpy": ("numpy", "numpy.libs", "numpy-*.dist-info"),
+        "opencv-python": ("cv2", "opencv_python-*.dist-info", "opencv_python.libs"),
+    }
+    for pattern in package_patterns[package]:
+        for path in glob.glob(os.path.join(extract_to, pattern)):
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+
+
 def get_system_arch():
     arch = platform.architecture()[0]
     if arch == "64bit":
@@ -92,23 +151,19 @@ def download_wheel(mirror_name, base_url, package_name, version=None):
     logger.info(f"正在从镜像源下载 {package_name}.whl 文件...")
     response = requests.get(package_url, headers=config.headers)
     response.raise_for_status()
-    # 获取系统架构
+    validate_python_version()
+    # 获取当前 Python 与系统架构
     arch = get_system_arch()
-    # 匹配 .whl 文件链接
-    pattern = re.compile(rf'href="(?:\.\./)*([^"]+{arch}\.whl[^"]+)"')
-    whl_links = pattern.findall(response.text)
+    python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    abi_tag = python_tag
+    # 匹配 .whl 文件链接，再按 Python、ABI、平台和版本筛选
+    pattern = re.compile(r"href=[\"']([^\"']+\.whl(?:#[^\"']*)?)[\"']", re.IGNORECASE)
+    whl_links = [link for link in pattern.findall(response.text)
+                 if is_compatible_wheel(link, package_name, version, python_tag, abi_tag, arch)]
     if not whl_links:
         raise ValueError(f"没有找到合适版本的 {package_name}.whl 文件!")
 
-    # 如果指定版本，优先选择匹配该版本的链接
-    if version:
-        version_links = [link for link in whl_links if version in link]
-        if version_links:
-            wheel_link = version_links[0]
-        else:
-            raise ValueError(f"找不到版本为 {version} 的{package_name}.whl 文件")
-    else:
-        wheel_link = whl_links[-1]  # 默认选择最新版本
+    wheel_link = whl_links[0]
 
     # 拼接完整 URL
     wheel_url = f"{base_url}/{wheel_link}" if mirror_name != "官方" else wheel_link
@@ -149,6 +204,7 @@ def install_package(package, version, mirror_name, base_url):
 
     try:
         wheel_path = download_wheel(mirror_name, base_url, package, version)
+        clear_package_files(package, res_dir)
         extract_whl(wheel_path, res_dir)
         add_runtime_search_paths(res_dir)
         logger.info(f"{package}-{version} 安装完成!")
@@ -164,6 +220,7 @@ def install_package(package, version, mirror_name, base_url):
 
 # 下载器,启动!
 def start():
+    validate_python_version()
     modules = []
     res_dir = get_res_dir()
     os.makedirs(res_dir, exist_ok=True)
