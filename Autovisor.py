@@ -8,7 +8,7 @@ import sys
 from playwright.async_api import BrowserContext, Page, Playwright, TimeoutError, async_playwright
 from playwright._impl._errors import TargetClosedError
 
-from modules import installer
+from modules import installer, updater
 from modules.banner import print_banner
 from modules.configs import Config, ConfigError
 from modules.course_runner import (
@@ -309,6 +309,7 @@ def cli() -> int:
     try:
         print("====== Init Log ======")
         logger.info("程序启动中...")
+        updater.check_for_update(logger)
         installer.validate_python_version()
         base_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
         config_path = args.config or os.path.join(base_dir, "config.ini")
