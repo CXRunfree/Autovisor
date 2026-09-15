@@ -49,9 +49,6 @@ class Config:
         # 夜间模式
         self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
         self.mirrors = self._read_mirrors(mirrors_path)
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
-        }
 
     def _read_config(self) -> None:
         if not os.path.isfile(self.config_path):

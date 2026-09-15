@@ -18,6 +18,9 @@ logger = Logger()
 
 SUPPORTED_PYTHON = ((3, 10), (3, 11), (3, 12))
 
+# 清华等镜像会拒绝浏览器风格的 User-Agent(403), 必须使用 pip 风格 UA。
+MIRROR_HEADERS = {"User-Agent": "pip/24.3.1"}
+
 
 def validate_python_version(version_info=sys.version_info):
     version = (version_info.major, version_info.minor)
@@ -104,7 +107,7 @@ def test_mirrors(config_obj=config):
     for name, url in config_obj.mirrors.items():
         logger.info(f"正在测试 {name} 镜像源...")
         try:
-            response = requests.get(url + "/simple/0", headers=config_obj.headers, timeout=5)  # 设置超时，避免卡住
+            response = requests.get(url + "/simple/0", headers=MIRROR_HEADERS, timeout=5)  # 设置超时，避免卡住
             if response.status_code == 200:
                 logger.info(f"{name} 镜像源 连接成功！")
                 available_mirrors.append((name, url))
@@ -157,7 +160,7 @@ def download_wheel(mirror_name, base_url, package_name, version=None, config_obj
 
     # 发送请求，找到匹配的 .whl 文件
     logger.info(f"正在从镜像源下载 {package_name}.whl 文件...")
-    response = requests.get(package_url, headers=config_obj.headers)
+    response = requests.get(package_url, headers=MIRROR_HEADERS)
     response.raise_for_status()
     validate_python_version()
     # 获取当前 Python 与系统架构
@@ -178,7 +181,7 @@ def download_wheel(mirror_name, base_url, package_name, version=None, config_obj
     whl_path = os.path.basename(wheel_url)
 
     # 下载 .whl 文件
-    response = requests.get(wheel_url, headers=config_obj.headers, stream=True)
+    response = requests.get(wheel_url, headers=MIRROR_HEADERS, stream=True)
     response.raise_for_status()
     total_size = int(response.headers.get('content-length', 0))
     with open(whl_path, 'wb') as f:
