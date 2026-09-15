@@ -1,0 +1,58 @@
+name: macOS Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - macos-latest
+          - macos-15-intel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies (incl. captcha extra)
+        run: uv sync --extra captcha
+
+      - name: Unit tests
+        run: uv run python -m unittest discover -s tests -v
+
+      - name: Prepare config (captcha branch)
+        run: |
+          cp config.macos.ini.example config.macos.ini
+          sed -i '' 's/^enableAutoCaptcha[[:space:]]*=.*/enableAutoCaptcha = True/' config.macos.ini
+          grep -n '^enableAutoCaptcha' config.macos.ini
+
+      - name: One-click deploy and launch
+        run: |
+          bash ./run_macos.sh --help
+          test -f .autovisor/env.ready
+
+      - name: Second run reuses ready environment
+        run: |
+          out=$(bash ./run_macos.sh --help)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q "环境已就绪"
