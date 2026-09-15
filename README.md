@@ -92,7 +92,7 @@
 
 macOS 版本使用 `uv` 管理隔离的 Python 3.13 环境，默认启动独立、可见的系统 Chrome。`run_macos.sh` 是一键部署脚本：
 
-- **首次运行**：自动安装 `uv`（优先 Homebrew，否则官方脚本），从 `configs.macos.ini` 生成不进入 Git 的 `configs.local.ini`（权限 `0600`），根据配置安装依赖（`enableAutoCaptcha=True` 时附带 `captcha` 依赖），并在 `driver=chromium` 时下载 Playwright Chromium。
+- **首次运行**：自动安装 `uv`（优先 Homebrew，否则官方脚本），根据 `configs.macos.ini` 安装依赖（`enableAutoCaptcha=True` 时附带 `captcha` 依赖），并在 `driver=chromium` 时下载 Playwright Chromium。
 - **后续运行**：检测到环境未变化时直接启动，不再重复安装。
 - 修改 `pyproject.toml`、`uv.lock` 或配置文件后会自动重新部署；也可用 `./run_macos.sh --setup` 强制重新部署。
 
@@ -101,7 +101,7 @@ macOS 版本使用 `uv` 管理隔离的 Python 3.13 环境，默认启动独立�
 ./run_macos.sh --setup        # 强制重新部署环境
 ```
 
-首次部署前请编辑生成的 `configs.local.ini`，填写 `[course-url]` 课程链接（可留空账号密码，用浏览器手动登录）。若已有 Requests/CookieJar JSON，可先安全导入；导入器会丢弃其他域名、空域名和过期项，不会输出 Cookie 值：
+首次部署前请编辑 `configs.macos.ini`，填写 `[course-url]` 课程链接（可留空账号密码，用浏览器手动登录）。若已有 Requests/CookieJar JSON，可先安全导入；导入器会丢弃其他域名、空域名和过期项，不会输出 Cookie 值：
 
 ```bash
 ./run_macos.sh --import-cookies /path/to/cookies.json
@@ -122,7 +122,7 @@ macOS 注意事项：
 - `attachExistingChrome = False` 是稳定默认值，程序启动隔离窗口并只保存智慧树 Cookie。
 - 实验性的附着模式可设为 `True`，需要先在 `chrome://inspect/#remote-debugging` 勾选允许远程调试。Chrome 150 会通过本机 `DevToolsActivePort` 动态公布端点，程序不会把瞬时 endpoint 写入配置或日志。
 - `enableHideWindow = False`，课中安全验证需要保持窗口可见并手动完成。
-- 自动滑块为可选功能；在 `configs.local.ini` 将 `enableAutoCaptcha` 设为 `True` 后重新运行 `./run_macos.sh`（会自动安装 `captcha` 依赖）。它只处理登录页滑块，不能绕过课中安全验证。
+- 自动滑块为可选功能；在 `configs.macos.ini` 将 `enableAutoCaptcha` 设为 `True` 后重新运行 `./run_macos.sh`（会自动安装 `captcha` 依赖）。它只处理登录页滑块，不能绕过课中安全验证。
 - 当前智慧共享课的课中弹题会暂停播放并等待手动处理；“平时测试”和期末考试不属于视频播放流程，本版本不会自动作答或提交。
 
 ------

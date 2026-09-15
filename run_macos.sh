@@ -61,11 +61,7 @@ while [ "$idx" -lt "${#args[@]}" ]; do
     idx=$((idx + 1))
 done
 if [ -z "$config_file" ]; then
-    if [ -f configs.local.ini ]; then
-        config_file=configs.local.ini
-    else
-        config_file=configs.macos.ini
-    fi
+    config_file=configs.macos.ini
 fi
 if [ "$has_config" = true ]; then
     set -- ${forward[@]+"${forward[@]}"}
@@ -105,13 +101,9 @@ ensure_uv() {
 deploy() {
     local cfg="$1"
     if [ ! -f "$cfg" ]; then
-        echo "[setup] 未找到 $cfg, 正在从 configs.macos.ini 创建模板..."
-        install -m 600 configs.macos.ini "$cfg"
-        echo "[setup] 已创建 $cfg"
-        echo "[setup] 请先编辑 $cfg: 填写 [course-url] 的课程链接(以及可选的账号密码)。"
-        echo "[setup] 若课程链接为空, 程序会提示并退出; 填写后再次运行本脚本即可。"
-    else
-        chmod 600 "$cfg"
+        echo "[ERROR] 未找到配置文件: $cfg" >&2
+        echo "[ERROR] 请直接编辑仓库内的 configs.macos.ini 后重试。" >&2
+        exit 1
     fi
 
     ensure_uv
