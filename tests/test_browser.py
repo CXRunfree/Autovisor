@@ -15,8 +15,16 @@ from modules.browser import (
 
 
 class BrowserResolutionTests(unittest.TestCase):
-    def test_driver_environment_override(self):
-        self.assertEqual(get_effective_driver("edge", {"AUTOVISOR_DRIVER": " chrome "}), "chrome")
+    def test_driver_is_normalized_from_config_alone(self):
+        self.assertEqual(get_effective_driver("Edge"), "edge")
+        self.assertEqual(get_effective_driver(" chrome "), "chrome")
+        self.assertEqual(get_effective_driver("edge"), "edge")
+
+    def test_driver_does_not_read_environment_variables(self):
+        with unittest.mock.patch.dict(
+            os.environ, {"AUTOVISOR_DRIVER": "chromium"}, clear=False
+        ):
+            self.assertEqual(get_effective_driver("edge"), "edge")
 
     def test_channels(self):
         self.assertEqual(resolve_browser_channel("edge"), "msedge")
@@ -35,7 +43,7 @@ class BrowserResolutionTests(unittest.TestCase):
             path = Path(root) / "DevToolsActivePort"
             path.write_text("9222\n/devtools/browser/test-id\n", encoding="utf-8")
             self.assertEqual(
-                resolve_cdp_endpoint("http://127.0.0.1:9222", {}, path),
+                resolve_cdp_endpoint("http://127.0.0.1:9222", path),
                 "ws://127.0.0.1:9222/devtools/browser/test-id",
             )
 

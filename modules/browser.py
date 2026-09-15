@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import os
 from pathlib import Path
 import sys
 from urllib.parse import urlparse
@@ -27,9 +26,8 @@ class BrowserSession:
             return
 
 
-def get_effective_driver(config_driver: str, env=None) -> str:
-    env = os.environ if env is None else env
-    return env.get("AUTOVISOR_DRIVER", config_driver).strip().lower()
+def get_effective_driver(config_driver: str) -> str:
+    return str(config_driver).strip().lower()
 
 
 def resolve_browser_channel(driver: str) -> str | None:
@@ -52,13 +50,8 @@ def resolve_executable_path(driver: str, configured_path: str) -> str | None:
 
 def resolve_cdp_endpoint(
     configured_url: str,
-    env=None,
     active_port_path: Path | None = None,
 ) -> str:
-    env = os.environ if env is None else env
-    if env.get("AUTOVISOR_CDP_URL"):
-        return env["AUTOVISOR_CDP_URL"].strip()
-
     configured_url = configured_url.strip()
     default_url = "http://127.0.0.1:9222"
     if configured_url and configured_url != default_url:
