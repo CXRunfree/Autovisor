@@ -48,8 +48,13 @@ jobs:
 
       - name: One-click deploy and launch
         run: |
-          bash ./run_macos.sh --help
+          out=$(bash ./run_macos.sh --help)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q -- "--extra captcha"
           test -f .autovisor/env.ready
+
+      - name: Captcha dependencies installed by deploy
+        run: uv run --no-sync python -c "import cv2, numpy; print(cv2.__version__, numpy.__version__)"
 
       - name: Second run reuses ready environment
         run: |

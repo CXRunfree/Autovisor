@@ -110,16 +110,16 @@ deploy() {
     ensure_uv
 
     local captcha driver extra=""
-    captcha=$(ini_value "$cfg" enableAutoCaptcha)
-    driver=$(ini_value "$cfg" driver)
+    captcha=$(ini_value "$cfg" enableAutoCaptcha | tr '[:upper:]' '[:lower:]')
+    driver=$(ini_value "$cfg" driver | tr '[:upper:]' '[:lower:]')
     case "$captcha" in
-        TRUE) extra="--extra captcha" ;;
+        true|1|yes|on) extra="--extra captcha" ;;
     esac
     echo "[setup] 安装 Python 依赖 (uv sync $extra)..."
     uv sync $extra
 
     case "$driver" in
-        CHROMIUM)
+        chromium)
             echo "[setup] 检测到 driver = chromium, 安装 Playwright Chromium..."
             uv run playwright install chromium
             ;;
