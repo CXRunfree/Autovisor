@@ -9,7 +9,6 @@
 
 准备读研, 本项目佛系更新
 
-------
 #### 2026/9/15 Autovisor-3.18.1 更新
 
 **本次更新:**
@@ -17,7 +16,6 @@
 - 新增启动时自动检查更新: 检测到 GitHub Release 有新版本时, 提示当前版本、更新说明与下载地址; 断网或检查失败不影响程序运行.
 - 修复清华镜像源因浏览器 User-Agent 被拒绝(403)的问题: 依赖下载统一改用 pip 风格 User-Agent.
 
-------
 #### 2026/9/15 Autovisor-3.18.0 更新
 
 **本次更新:**
@@ -41,7 +39,6 @@
 - 镜像源移至 `data/mirrors.json`, 支持按顺序切换备用镜像.
 - 重整发行版目录, 使用 `resources/`、`packages/` 和 `data/` 分类存放文件.
 
-------
 #### 💗赞助商
 
 | 赞助商 | 简介 |
@@ -122,7 +119,6 @@ cp config.macos.ini.example config.macos.ini
 
 首次运行会自动部署环境 (安装 `uv`、依赖和必要的浏览器), 之后直接启动. 环境或配置变化时会自动重新部署, 也可用 `./run_macos.sh --setup` 强制重建.
 
-------
 #### 四、发行版下载
 
 - Github: [Releases · CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor/releases)
