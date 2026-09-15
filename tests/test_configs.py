@@ -60,5 +60,47 @@ class ConfigTests(unittest.TestCase):
                 )
 
 
+    def test_reads_config_with_utf8_bom(self):
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", delete=False) as file:
+            file.write(
+                "[user-account]\nusername=\npassword=\n"
+                "[browser-option]\ndriver=edge\nEXE_PATH=\n"
+                "[script-option]\nenableAutoCaptcha=false\nenableHideWindow=false\nshowDonateCode=false\n"
+                "[course-option]\nsoundOff=true\n"
+                "[course-url]\nURL1=\n"
+            )
+            path = file.name
+        mirrors_path = path + ".json"
+        with open(mirrors_path, "w", encoding="utf-8") as file:
+            file.write('{"primary": "https://mirror.example/simple"}')
+        try:
+            self.assertEqual(Config(path, mirrors_path).driver, "edge")
+        finally:
+            os.remove(path)
+            os.remove(mirrors_path)
+
+    def test_reads_mirrors_with_utf8_bom(self):
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as file:
+            file.write(
+                "[user-account]\nusername=\npassword=\n"
+                "[browser-option]\ndriver=edge\nEXE_PATH=\n"
+                "[script-option]\nenableAutoCaptcha=false\nenableHideWindow=false\nshowDonateCode=false\n"
+                "[course-option]\nsoundOff=true\n"
+                "[course-url]\nURL1=\n"
+            )
+            path = file.name
+        mirrors_path = path + ".json"
+        with open(mirrors_path, "w", encoding="utf-8-sig") as file:
+            file.write('{"primary": "https://mirror.example/simple"}')
+        try:
+            self.assertEqual(
+                Config(path, mirrors_path).mirrors,
+                {"primary": "https://mirror.example/simple"},
+            )
+        finally:
+            os.remove(path)
+            os.remove(mirrors_path)
+
+
 if __name__ == "__main__":
     unittest.main()

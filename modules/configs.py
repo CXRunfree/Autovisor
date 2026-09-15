@@ -57,7 +57,7 @@ class Config:
         if not os.path.isfile(self.config_path):
             raise ConfigError(f"未找到配置文件: {self.config_path}")
         try:
-            self._config.read(self.config_path, encoding='utf-8')
+            self._config.read(self.config_path, encoding='utf-8-sig')
         except UnicodeDecodeError:
             self._config.read(self.config_path, encoding='gbk')
         required_sections = {
@@ -81,7 +81,7 @@ class Config:
         if not os.path.isfile(mirrors_path):
             raise ConfigError(f"未找到镜像配置文件: {mirrors_path}")
         try:
-            with open(mirrors_path, "r", encoding="utf-8") as file:
+            with open(mirrors_path, "r", encoding="utf-8-sig") as file:
                 mirrors = json.load(file)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise ConfigError(f"镜像配置文件无效: {mirrors_path}") from error
