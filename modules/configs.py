@@ -22,6 +22,8 @@ class Config:
             self.password = self._config.get('user-account', 'password', raw=True)
             # 浏览器选项
             self.exe_path = self._config.get('browser-option', 'EXE_PATH', raw=True)
+            self.attach_existing_chrome = self.get_bool_field('browser-option', 'attachExistingChrome', fallback=False)
+            self.cdp_url = self._config.get('browser-option', 'cdpUrl', raw=True, fallback='http://127.0.0.1:9222').strip()
             # 脚本选项
             self.enableAutoCaptcha = self.get_bool_field('script-option', 'enableAutoCaptcha')
             self.enableHideWindow = self.get_bool_field('script-option', 'enableHideWindow')
@@ -96,8 +98,8 @@ class Config:
             driver = "edge"
         return driver.lower()
 
-    def get_bool_field(self, section: str, option: str) -> bool:
-        field = self._config.get(section, option, raw=True).lower()
+    def get_bool_field(self, section: str, option: str, fallback: bool = False) -> bool:
+        field = self._config.get(section, option, raw=True, fallback=str(fallback)).strip().lower()
         if field == "true":
             return True
         else:

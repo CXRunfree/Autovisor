@@ -237,6 +237,21 @@ def install_package(package, version, mirrors, config_obj=config):
 
 # 下载器,启动!
 def start(config_obj=config):
+    if os.name != "nt":
+        modules = []
+        missing = []
+        for package in packages:
+            try:
+                modules.append(import_module(mapping[package]))
+            except ImportError:
+                missing.append(package)
+        if missing:
+            names = ", ".join(missing)
+            raise RuntimeError(
+                f"缺少自动滑块依赖: {names}; 请运行 uv sync --extra captcha"
+            )
+        return modules
+
     validate_python_version()
     modules = []
     res_dir = get_res_dir()

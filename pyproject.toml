@@ -7,17 +7,26 @@ name = "autovisor"
 version = "3.17.3"
 description = "智慧树课程自动化工具"
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
 dependencies = [
-    "opencv-python~=4.10.0.82",
-    "numpy~=1.26.4",
-    "pyinstaller~=6.20.0",
-    "playwright~=1.59.0",
-    "PyGetWindow~=0.0.9; platform_system == 'Windows'",
-    "requests~=2.33.1",
-    "Pillow~=10.1.0",
-    "httpx~=0.28.1",
+    "httpx>=0.28,<1",
+    "pillow>=10,<13",
+    "playwright>=1.49,<2",
+    "pygetwindow>=0.0.9; platform_system == 'Windows'",
+    "requests>=2.31,<3",
 ]
+
+[project.optional-dependencies]
+captcha = [
+    "numpy>=2,<3",
+    "opencv-python>=4.10,<5",
+]
+gui = [
+    "sv-ttk>=2.6,<3",
+]
+
+[tool.uv]
+package = false
 
 [tool.setuptools]
 py-modules = []

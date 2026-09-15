@@ -1,23 +1,22 @@
 # encoding=utf-8
+import argparse
 import asyncio
-import os
-import time
-import traceback
-import sys
 import ctypes
-from playwright.async_api import async_playwright, Playwright, Page, BrowserContext
-from playwright.async_api import TimeoutError
+import os
+import sys
+
+from playwright.async_api import BrowserContext, Page, Playwright, TimeoutError, async_playwright
 from playwright._impl._errors import TargetClosedError
-from modules.logger import Logger
-from modules.configs import Config, ConfigError
-from modules.progress import get_course_progress, show_course_progress
-from modules.support import show_donate
-from modules.utils import optimize_page, get_lesson_name, get_filtered_class, get_video_attr, hide_window, \
-     save_cookies, load_cookies, clear_cookies, get_runtime_path
-from modules.slider import slider_verify
-from modules.tasks import video_optimize, play_video, skip_questions, wait_for_verify, task_monitor
+
 from modules import installer
 from modules.banner import print_banner
+from modules.configs import Config, ConfigError
+from modules.course_runner import (
+    CourseOutcome,
+    detect_catalog_after_verification,
+    run_course,
+)
+from modules.diagnostics import check_browser, check_course
 from modules.login import (
     LOGIN_PASSWORD_SELECTOR,
     LOGIN_SUBMIT_SELECTOR,
@@ -26,22 +25,44 @@ from modules.login import (
     is_login_page,
     wait_for_login_complete,
 )
+from modules.logger import Logger
+from modules.slider import slider_verify
+from modules.support import show_donate
+from modules.tasks import (
+    play_video,
+    skip_questions,
+    task_monitor,
+    video_optimize,
+    wait_for_verify,
+)
+from modules.utils import (
+    clear_cookies,
+    get_runtime_path,
+    hide_window,
+    load_cookies,
+    optimize_page,
+    save_cookies,
+)
 
 # 获取全局事件循环
 event_loop_verify = asyncio.Event()
 event_loop_answer = asyncio.Event()
 COOKIE_PATH = get_runtime_path("data", "cookies.json")
+ZHS_COOKIE_URLS = [
+    "https://www.zhihuishu.com",
+    "https://passport.zhihuishu.com",
+    "https://onlineweb.zhihuishu.com",
+    "https://studyvideoh5.zhihuishu.com",
+    "https://studywisdomh5.zhihuishu.com",
+    "https://fusioncourseh5.zhihuishu.com",
+    "https://hike.zhihuishu.com",
+]
 
 
-async def wait_for_interruption(event_loop: asyncio.Event) -> float:
-    event_loop.clear()
-    wait_start = time.time()
-    await event_loop.wait()
-    return time.time() - wait_start
-
-
-def cal_time_period(start_time: float, paused_time: float) -> float:
-    return max(0.0, time.time() - start_time - paused_time)
+async def persist_login_cookies(context: BrowserContext) -> None:
+    cookies = await context.cookies(ZHS_COOKIE_URLS)
+    if cookies:
+        save_cookies(cookies, COOKIE_PATH)
 
 
 def get_screen_size():
@@ -51,7 +72,7 @@ def get_screen_size():
     return 1920, 1080
 
 
-async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
+async def init_page(p: Playwright, config, cookies) -> tuple[Page, BrowserContext]:
     driver = "msedge" if config.driver == "edge" else config.driver
     logger.info(f"正在启动{config.driver}浏览器...")
     screen_width, screen_height = get_screen_size()
@@ -67,14 +88,13 @@ async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
     }
     try:
         browser = await p.chromium.launch(**launch_args)
-    except TargetClosedError as e:
-        logger.log_exception("首次启动浏览器失败,准备重试.", e)
+    except TargetClosedError as exc:
+        logger.log_exception("首次启动浏览器失败,准备重试.", exc)
         logger.info("检测到浏览器首次启动失败,正在重试...")
         await asyncio.sleep(1)
         browser = await p.chromium.launch(**launch_args)
     # 使用真实窗口尺寸，避免 Playwright 默认 viewport 覆盖最大化窗口。
     context = await browser.new_context(viewport=None)
-    # 加载 Cookies
     if cookies:
         await context.add_cookies(cookies)
         logger.info("已加载 Cookies!")
@@ -82,7 +102,7 @@ async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
         logger.info("未找到 Cookies,将跳转至登录页.")
     page = await context.new_page()
     logger.debug(f"{config.driver}浏览器启动完成.")
-    #抹去特征
+    # 抹去特征
     with open(get_runtime_path("resources", "stealth.min.js"), 'r') as f:
         js = f.read()
     await page.add_init_script(js)
@@ -91,7 +111,8 @@ async def init_page(p: Playwright, cookies) -> tuple[Page, BrowserContext]:
 
     return page, context
 
-async def auto_login(context: BrowserContext, page: Page, modules=None):
+
+async def auto_login(context: BrowserContext, page: Page, config, modules=None) -> None:
     await page.goto(config.login_url, wait_until="commit")
     if not is_login_page(page.url):
         logger.info("检测到已登录,跳过登录步骤.")
@@ -129,12 +150,13 @@ async def auto_login(context: BrowserContext, page: Page, modules=None):
                 captcha_task.cancel()
             await asyncio.gather(captcha_task, return_exceptions=True)
 
-    cookies = await context.cookies()
-    save_cookies(cookies, COOKIE_PATH)
+    await persist_login_cookies(context)
     logger.info(f"已保存登录凭证到: {COOKIE_PATH},下次可免密登录.")
 
 
-async def ensure_login(context: BrowserContext, page: Page, cookies, modules=None):
+async def ensure_login(
+    context: BrowserContext, page: Page, cookies, config, modules=None
+) -> bool:
     if cookies:
         logger.info("正在校验 Cookies 登录状态...")
         await page.goto(config.login_url, wait_until="domcontentloaded")
@@ -152,244 +174,191 @@ async def ensure_login(context: BrowserContext, page: Page, cookies, modules=Non
     if not config.username or not config.password:
         logger.info("请手动填写账号密码...")
     logger.info("正在等待登录完成...")
-    await auto_login(context, page, modules)
+    await auto_login(context, page, config, modules)
     logger.info("登录成功!")
     return False
 
 
-async def learning_loop(page: Page, start_time, is_new_version=False, is_hike_class=False):
-    paused_time = 0.0
-    try:
-        cur_time = await get_course_progress(page, is_new_version, is_hike_class)
-    except TargetClosedError:
-        return paused_time
-    while cur_time != "100%":
-        try:
-            limit_time = config.limitMaxTime
-            time_period = cal_time_period(start_time, paused_time) / 60
-            if 0 < limit_time <= time_period:
-                break
-            cur_time = await get_course_progress(page, is_new_version, is_hike_class)
-            show_course_progress(desc="完成进度:", cur_time=cur_time)
-            await asyncio.sleep(0.5)
-        except TargetClosedError:
-            return paused_time
-        except TimeoutError as e:
-            if await page.query_selector(".yidun_modal__title"):
-                paused_time += await wait_for_interruption(event_loop_verify)
-            elif await page.query_selector(".topic-title"):
-                paused_time += await wait_for_interruption(event_loop_answer)
-            else:
-                logger.debug(f"学习进度轮询未命中: {logger.summarize_exception(e)}")
-    return paused_time
-
-
-async def review_loop(page: Page, start_time, is_hike_class=False):
-    paused_time = 0.0
-    total_time = await get_video_attr(page, "duration")
-    if total_time is None:
-        return paused_time
-    try:
-        await page.evaluate(config.reset_curtime)  # 重置视频播放时间
-    except TargetClosedError:
-        return paused_time
-    while True:
-        try:
-            limit_time = config.limitMaxTime
-            cur_time = await get_video_attr(page, "currentTime")
-            if cur_time is None or cur_time >= total_time:
-                break
-            time_period = cal_time_period(start_time, paused_time) / 60
-            if 0 < limit_time <= time_period:
-                break
-            show_course_progress(desc="完成进度:", cur_time=time_period, limit_time=limit_time)
-            await asyncio.sleep(0.5)
-        except TargetClosedError:
-            return paused_time
-        except TimeoutError as e:
-            if await page.query_selector(".yidun_modal__title"):
-                paused_time += await wait_for_interruption(event_loop_verify)
-            elif await page.query_selector(".topic-title"):
-                paused_time += await wait_for_interruption(event_loop_answer)
-            else:
-                logger.debug(f"复习进度轮询未命中: {logger.summarize_exception(e)}")
-    return paused_time
-
-
-async def working_loop(page: Page, is_new_version=False, is_hike_class=False):
-    # 获取所有课程元素
-    if is_hike_class:
-        await page.wait_for_selector(".file-item", state="attached")
-    else:
-        await page.wait_for_selector(".clearfix.video", state="attached")
-    to_learn_class = await get_filtered_class(page, is_new_version, is_hike_class)
-    learning = True if len(to_learn_class) > 0 else False
-    if learning:
-        all_class = to_learn_class
-    else:
-        all_class = await get_filtered_class(page, is_new_version, is_hike_class, include_all=True)
-    start_time = time.time()
-    paused_time = 0.0
-    cur_index = 0
-
-    while cur_index < len(all_class):
-        await all_class[cur_index].click()
-        if is_hike_class:
-            await page.wait_for_selector(".file-item.active", state="attached")
-        else:
-            await page.wait_for_selector(".current_play", state="attached")
-        await page.wait_for_timeout(1000)
-        title = await get_lesson_name(page, is_hike_class)
-        logger.info(f"正在学习:{title}")
-        page.set_default_timeout(10000)
-        # 移除视频暂停功能
-        await page.wait_for_selector("video", state="attached")
-        await page.evaluate(config.remove_pause)
-        if learning:
-            paused_time += await learning_loop(page, start_time, is_new_version, is_hike_class)
-        else:
-            paused_time += await review_loop(page, start_time, is_hike_class)
-        if is_hike_class is False:
-            if "current_play" in await all_class[cur_index].get_attribute('class'):
-                cur_index += 1
-        else:
-            if "active" in await all_class[cur_index].get_attribute('class'):
-                cur_index += 1
-        reachTimeLimit = await check_time_limit(page, start_time, paused_time, all_class, title, is_hike_class)
-        if reachTimeLimit:
-            return
-
-
-async def check_time_limit(page: Page, start_time, paused_time, all_class, title, is_hike_class) -> bool:
-    reachTimeLimit = False
-    page.set_default_timeout(24 * 3600 * 1000)
-    time_period = cal_time_period(start_time, paused_time) / 60
-    if 0 < config.limitMaxTime <= time_period:
-        logger.info(f"当前课程已达时限:{config.limitMaxTime}min", shift=True)
-        logger.info("即将进入下门课程!")
-        reachTimeLimit = True
-    else:
-        class_name = await all_class[-1].get_attribute('class')
-        if is_hike_class:
-            if "active" in class_name:
-                logger.info("已学完本课程全部内容!", shift=True)
-                print("==" * 10)
-            else:
-                logger.info(f"\"{title}\" 已完成!", shift=True)
-                logger.info(f"本次课程已学习:{time_period:.1f} min")
-        else:
-            if "current_play" in class_name:
-                logger.info("已学完本课程全部内容!", shift=True)
-                print("==" * 10)
-            else:
-                logger.info(f"\"{title}\" 已完成!", shift=True)
-                logger.info(f"本次课程已学习:{time_period:.1f} min")
-    return reachTimeLimit
-
-
-async def main():
+async def main(config) -> bool:
     modules, tasks = [], []
+    playback_enabled = asyncio.Event()
+    all_courses_complete = True
+    run_ok = True
     if config.enableAutoCaptcha:
         print("===== Install Log =====")
         logger.info("正在检查依赖库...")
         modules = installer.start(config)
         logger.info("所有依赖库安装完成!")
+
     print("====== Login Log ======")
     async with async_playwright() as p:
         cookies = load_cookies(COOKIE_PATH)
-        page, context = await init_page(p, cookies)
+        page, context = await init_page(p, config, cookies)
+        await ensure_login(context, page, cookies, config, modules)
 
-        await ensure_login(context, page, cookies, modules)
-
-        # 先启动人机验证协程
-        verify_task = asyncio.create_task(wait_for_verify(page, config, event_loop_verify))
-
-        # 启动协程任务
-        video_optimize_task = asyncio.create_task(video_optimize(page, config))
-        skip_ques_task = asyncio.create_task(skip_questions(page, event_loop_answer))
-        play_video_task = asyncio.create_task(play_video(page))
-        tasks.extend([verify_task, video_optimize_task, skip_ques_task, play_video_task])
-
-        # 隐藏窗口
+        tasks.extend(
+            [
+                asyncio.create_task(
+                    wait_for_verify(page, config, event_loop_verify)
+                ),
+                asyncio.create_task(video_optimize(page, config)),
+                asyncio.create_task(skip_questions(page, event_loop_answer)),
+                asyncio.create_task(play_video(page, playback_enabled)),
+            ]
+        )
         if config.enableHideWindow:
             await hide_window(page)
-
-        # 任务监视器
         monitor_task = asyncio.create_task(task_monitor(tasks))
 
-        # 遍历所有课程,加载网页
         for course_url in config.course_urls:
             print("===== Runtime Log =====")
-            is_new_version = "fusioncourseh5" in course_url
-            is_hike_class = "hike.zhihuishu.com" in course_url  # 判断是否为翻转课
             logger.info("正在加载播放页...")
             await page.goto(course_url, wait_until="commit")
             await page.wait_for_timeout(1500)
             if "login" in page.url:
-                logger.warn("播放页跳转到登录页, 当前登录状态已失效, 正在重新登录.", shift=True)
+                logger.warn(
+                    "播放页跳转到登录页, 当前登录状态已失效, 正在重新登录.",
+                    shift=True,
+                )
                 clear_cookies(COOKIE_PATH)
-                await ensure_login(context, page, None, modules)
+                await ensure_login(context, page, None, config, modules)
                 logger.info("重新进入播放页...")
                 await page.goto(course_url, wait_until="commit")
                 await page.wait_for_timeout(1500)
-            # 关闭弹窗,优化页面结构
-            await optimize_page(page, config, is_new_version, is_hike_class)
+
+            catalog = await detect_catalog_after_verification(page, page.url)
+            logger.info(f"检测到 {catalog.name} 课程目录.")
+            await optimize_page(page, config, catalog)
             logger.info("页面优化完成!")
-            # 获取课程标题
-            if not is_new_version and is_hike_class is False:
-                title_selector = await page.wait_for_selector(".source-name")
-                course_title = await title_selector.text_content()
-                logger.info(f"当前课程:<<{course_title}>>")
-            if is_hike_class:
-                title_selector = await page.wait_for_selector(".course-name")
-                course_title = await title_selector.text_content()
-                logger.info(f"当前课程:<<{course_title}>>， 是翻转课哎")
-            # 启动课程主循环
-            await working_loop(page, is_new_version=is_new_version, is_hike_class=is_hike_class)
+            if catalog.course_title:
+                title_element = page.locator(catalog.course_title).first
+                if await title_element.count():
+                    title = " ".join(
+                        (await title_element.text_content() or "").split()
+                    )
+                    if title:
+                        logger.info(f"当前课程:<<{title}>>")
+
+            playback_enabled.clear()
+            outcome = await run_course(
+                page, catalog, config, logger, playback_enabled
+            )
+            playback_enabled.clear()
+            if outcome is CourseOutcome.FAILED:
+                logger.warn("课程未确认完成,已停止本轮运行.", shift=True)
+                run_ok = False
+                break
+            if outcome is CourseOutcome.TIME_LIMIT:
+                all_courses_complete = False
+
+        for task in tasks:
+            task.cancel()
+        if monitor_task:
+            monitor_task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if monitor_task:
+            await asyncio.gather(monitor_task, return_exceptions=True)
+        try:
+            await persist_login_cookies(context)
+        except Exception as exc:
+            logger.log_exception("刷新登录 Cookies 失败.", exc)
+        try:
+            await context.browser.close()
+        except TargetClosedError:
+            pass
+
     print("===== Task Finished =====")
-    logger.info("所有课程已学习完毕!")
+    if not run_ok:
+        logger.warn("本轮因课时进度未确认而停止.", shift=True)
+        return False
+    if all_courses_complete:
+        logger.info("所有课程已学习完毕!")
+    else:
+        logger.info("本轮已按每门课程时限结束,仍有课程未完成.", shift=True)
     show_donate(get_runtime_path("resources", "QRcode.jpg"), show=config.showDonateCode)
-    # 结束所有协程任务
-    await asyncio.gather(*tasks, return_exceptions=True) if tasks else None
-    await monitor_task
+    return True
 
 
-if __name__ == "__main__":
+def parse_args():
+    parser = argparse.ArgumentParser(description="Autovisor")
+    parser.add_argument("--config", default=None, help="配置文件路径(默认使用程序目录下的 configs.ini)")
+    parser.add_argument(
+        "--check-browser",
+        action="store_true",
+        help="只检查 Chrome 启动和智慧树登录状态",
+    )
+    parser.add_argument(
+        "--check-course",
+        metavar="URL",
+        help="阻止进度上报和自动播放,只检查课程目录选择器",
+    )
+    parser.add_argument(
+        "--import-cookies",
+        metavar="PATH",
+        help="从 Requests CookieJar JSON 安全导入未过期的智慧树 Cookie",
+    )
+    return parser.parse_args()
+
+
+def cli() -> int:
+    global logger
+    args = parse_args()
     print_banner()
     logger = Logger()
+    exit_code = 0
     try:
         print("====== Init Log ======")
         logger.info("程序启动中...")
         installer.validate_python_version()
         base_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(base_dir, "configs.ini")
+        config_path = args.config or os.path.join(base_dir, "configs.ini")
         mirrors_path = os.path.join(base_dir, "data", "mirrors.json")
-        config=Config(config_path, mirrors_path)
+        config = Config(config_path, mirrors_path)
+        if args.import_cookies:
+            from modules.utils import import_zhihuishu_cookies
+
+            count = import_zhihuishu_cookies(args.import_cookies, COOKIE_PATH)
+            logger.info(f"已安全导入 {count} 条智慧树 Cookie.", shift=True)
+            return 0
+        if args.check_browser:
+            return asyncio.run(check_browser(config, logger, COOKIE_PATH))
+        if args.check_course:
+            return asyncio.run(
+                check_course(args.check_course, config, logger, COOKIE_PATH)
+            )
         if not config.course_urls:
             logger.error("未检测到有效网址或不支持此类网页,请检查配置文件!")
-            time.sleep(2)
-            sys.exit(-1)
-        asyncio.run(main())
-    except TargetClosedError as e:
-        if "BrowserType.launch" in repr(e):
-            logger.log_exception("浏览器相关流程异常结束.", e)
-            logger.error("浏览器启动失败,请尝试重新启动!")
-            logger.info("如果仍然无法启动,请修改配置文件并使用Chrome浏览器")
+            return 2
+        if not asyncio.run(main(config)):
+            exit_code = 1
+    except TargetClosedError as exc:
+        if "BrowserType.launch" in repr(exc):
+            logger.log_exception("浏览器相关流程异常结束.", exc)
+            logger.error("浏览器启动失败,请检查 Chrome 或 CDP 配置!")
         else:
-            logger.debug(f"浏览器关闭结束运行: {logger.summarize_exception(e)}")
-    except ConfigError as e:
-        logger.error(f"配置文件无效: {e}", shift=True)
+            logger.debug(f"浏览器关闭结束运行: {logger.summarize_exception(exc)}")
+        exit_code = 1
+    except ConfigError as exc:
+        logger.error(f"配置文件无效: {exc}", shift=True)
         logger.info("请完整解压发行包，并确保 configs.ini 与 Autovisor.exe 位于同一目录。")
-    except Exception as e:
-        logger.log_exception("程序运行时出现未处理异常.", e, shift=True)
-        if isinstance(e, KeyError):
+        exit_code = 1
+    except Exception as exc:
+        logger.log_exception("程序运行时出现未处理异常.", exc, shift=True)
+        if isinstance(exc, KeyError):
             logger.error(f"配置文件错误!")
-        elif isinstance(e, FileNotFoundError):
-            logger.error(f"依赖文件缺失: {e.filename},请重新安装程序!")
-        elif isinstance(e, UnicodeDecodeError):
+        elif isinstance(exc, FileNotFoundError):
+            logger.error(f"依赖文件缺失: {exc.filename},请重新安装程序!")
+        elif isinstance(exc, UnicodeDecodeError):
             logger.error("配置文件编码错误,保存时请选择UTF-8或GBK编码!")
         else:
             logger.error("系统出错,请检查后重新启动!")
+        exit_code = 1
     finally:
         logger.save()
-        input("程序已结束,按Enter退出...")
+        if getattr(sys, "frozen", False) and sys.stdin.isatty():
+            input("程序已结束,按Enter退出...")
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(cli())
