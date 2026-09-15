@@ -19,7 +19,7 @@
 
 - 修复了限时功能在安全验证期间未暂停计时的问题.
 - 修复智慧树新版登录页兼容问题.
-- 修复从非项目目录启动时无法读取 `configs.ini` 的问题.
+- 修复从非项目目录启动时无法读取 `config.ini` 的问题.
 - 限制运行环境为 Python 3.10、3.11 或 3.12.
 - 更新运行时依赖下载器, 按 Python、ABI 和系统架构选择匹配的 wheel, 并避免新旧依赖混装.
 - 依赖配置升级为 `pyproject.toml`.
@@ -63,7 +63,18 @@
 
 1.请确保系统为windows10及以上
 
-2.文件夹内有 **configs.ini 文件** (可能没显示 **.ini** 后缀名)，请用文本编辑器打开;
+2.准备配置文件：
+
+- **发行版**：文件夹内自带 **config.ini**（可能没显示 `.ini` 后缀名）；
+- **源码运行**：先将模板复制为本地配置再编辑：
+
+```bash
+# Windows / 源码
+copy config.ini.example config.ini
+
+# macOS
+cp config.macos.ini.example config.macos.ini
+```
 
 3.填写配置文件
 
@@ -74,7 +85,7 @@
 
 4.根据文件内的说明填写好配置信息，一定要**保存后**再退出。
 
-**注意: `configs.ini` 配置项不需要加引号。镜像源请编辑 `data/mirrors.json`，必须遵循 JSON 格式。**
+**注意: `config.ini` 配置项不需要加引号。镜像源请编辑 `data/mirrors.json`，必须遵循 JSON 格式。**
 
 <img src="https://i-blog.csdnimg.cn/direct/e3f06598535c4b48bc1e8a52eb2d0ef8.png"/>
 
@@ -90,40 +101,19 @@
 
 #### macOS 源码运行
 
-macOS 版本使用 `uv` 管理隔离的 Python 3.13 环境，默认启动独立、可见的系统 Chrome。`run_macos.sh` 是一键部署脚本：
-
-- **首次运行**：自动安装 `uv`（优先 Homebrew，否则官方脚本），根据 `configs.macos.ini` 安装依赖（`enableAutoCaptcha=True` 时附带 `captcha` 依赖），并在 `driver=chromium` 时下载 Playwright Chromium。
-- **后续运行**：检测到环境未变化时直接启动，不再重复安装。
-- 修改 `pyproject.toml`、`uv.lock` 或配置文件后会自动重新部署；也可用 `./run_macos.sh --setup` 强制重新部署。
+需要 macOS 和系统 Chrome。先复制模板并填写配置：
 
 ```bash
-./run_macos.sh                # 首次部署并启动
-./run_macos.sh --setup        # 强制重新部署环境
+cp config.macos.ini.example config.macos.ini
 ```
 
-首次部署前请编辑 `configs.macos.ini`，填写 `[course-url]` 课程链接（可留空账号密码，用浏览器手动登录）。若已有 Requests/CookieJar JSON，可先安全导入；导入器会丢弃其他域名、空域名和过期项，不会输出 Cookie 值：
+打开 `config.macos.ini`，填入课程链接（账号密码可留空，用浏览器手动登录），然后运行：
 
 ```bash
-./run_macos.sh --import-cookies /path/to/cookies.json
+./run_macos.sh
 ```
 
-只读检查不会进入课程，也不会下载媒体或上报进度：
-
-```bash
-./run_macos.sh --check-browser
-./run_macos.sh --check-course 'https://studywisdomh5.zhihuishu.com/study/index?recruitAndCourseId=...'
-```
-
-`--check-browser` 只验证 Chrome 启动和智慧树登录状态；`--check-course` 只报告页面使用的新旧目录选择器，当前智慧共享课目录会识别 `.child-info.hasvideo`、项内完成标记和 `aria-valuenow` 进度。确认识别成功后再正常启动即可。
-
-macOS 注意事项：
-
-- 浏览器与 CDP 均由配置文件决定，不读取环境变量：`driver = Chrome`（或 `chromium`），`EXE_PATH` 通常留空即可。
-- `attachExistingChrome = False` 是稳定默认值，程序启动隔离窗口并只保存智慧树 Cookie。
-- 实验性的附着模式可设为 `True`，需要先在 `chrome://inspect/#remote-debugging` 勾选允许远程调试。Chrome 150 会通过本机 `DevToolsActivePort` 动态公布端点，程序不会把瞬时 endpoint 写入配置或日志。
-- `enableHideWindow = False`，课中安全验证需要保持窗口可见并手动完成。
-- 自动滑块为可选功能；在 `configs.macos.ini` 将 `enableAutoCaptcha` 设为 `True` 后重新运行 `./run_macos.sh`（会自动安装 `captcha` 依赖）。它只处理登录页滑块，不能绕过课中安全验证。
-- 当前智慧共享课的课中弹题会暂停播放并等待手动处理；“平时测试”和期末考试不属于视频播放流程，本版本不会自动作答或提交。
+首次运行会自动部署环境（安装 `uv`、依赖和必要的浏览器），之后直接启动。
 
 ------
 

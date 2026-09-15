@@ -9,7 +9,7 @@ from modules.configs import Config, ConfigError
 class ConfigTests(unittest.TestCase):
     def test_reports_missing_config_file(self):
         with self.assertRaisesRegex(ConfigError, "未找到配置文件"):
-            Config("missing-configs.ini")
+            Config("missing-config.ini")
 
     def test_reports_missing_required_sections(self):
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as file:

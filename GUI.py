@@ -7,7 +7,7 @@ import sv_ttk
 
 # === 配置文件初始化 ===
 config = configparser.ConfigParser()
-config_file = 'configs.ini'
+config_file = 'config.ini'
 config.read(config_file, encoding="utf-8")
 
 # === 默认配置 ===

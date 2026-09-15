@@ -281,7 +281,7 @@ async def main(config) -> bool:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Autovisor")
-    parser.add_argument("--config", default=None, help="配置文件路径(默认使用程序目录下的 configs.ini)")
+    parser.add_argument("--config", default=None, help="配置文件路径(默认使用程序目录下的 config.ini)")
     parser.add_argument(
         "--check-browser",
         action="store_true",
@@ -311,7 +311,7 @@ def cli() -> int:
         logger.info("程序启动中...")
         installer.validate_python_version()
         base_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
-        config_path = args.config or os.path.join(base_dir, "configs.ini")
+        config_path = args.config or os.path.join(base_dir, "config.ini")
         mirrors_path = os.path.join(base_dir, "data", "mirrors.json")
         config = Config(config_path, mirrors_path)
         if args.import_cookies:
@@ -340,7 +340,7 @@ def cli() -> int:
         exit_code = 1
     except ConfigError as exc:
         logger.error(f"配置文件无效: {exc}", shift=True)
-        logger.info("请完整解压发行包，并确保 configs.ini 与 Autovisor.exe 位于同一目录。")
+        logger.info("请完整解压发行包，并确保 config.ini 与 Autovisor.exe 位于同一目录。")
         exit_code = 1
     except Exception as exc:
         logger.log_exception("程序运行时出现未处理异常.", exc, shift=True)

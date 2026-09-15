@@ -61,7 +61,7 @@ while [ "$idx" -lt "${#args[@]}" ]; do
     idx=$((idx + 1))
 done
 if [ -z "$config_file" ]; then
-    config_file=configs.macos.ini
+    config_file=config.macos.ini
 fi
 if [ "$has_config" = true ]; then
     set -- ${forward[@]+"${forward[@]}"}
@@ -102,9 +102,10 @@ deploy() {
     local cfg="$1"
     if [ ! -f "$cfg" ]; then
         echo "[ERROR] 未找到配置文件: $cfg" >&2
-        echo "[ERROR] 请直接编辑仓库内的 configs.macos.ini 后重试。" >&2
+        echo "[ERROR] 请先复制模板并编辑: cp config.macos.ini.example config.macos.ini" >&2
         exit 1
     fi
+    chmod 600 "$cfg"
 
     ensure_uv
 

@@ -12,7 +12,8 @@ resources/*
 __pycache__/
 .vscode/
 .venv/
-configs.local.ini
+config.ini
+config.macos.ini
 .autovisor/
 captcha/
 logs/
