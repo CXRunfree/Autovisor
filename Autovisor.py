@@ -62,11 +62,43 @@ ZHS_COOKIE_URLS = [
 ]
 
 
+_saved_cookies = None
+
+
+def _cookies_signature(cookies):
+    if not cookies:
+        return None
+    return frozenset(
+        (
+            cookie.get("name"),
+            cookie.get("domain"),
+            cookie.get("path"),
+            cookie.get("value"),
+        )
+        for cookie in cookies
+    )
+
+
+def remember_login_cookies(cookies) -> None:
+    """记录已经落盘的凭证, 用于跳过重复写入。"""
+    global _saved_cookies
+    _saved_cookies = _cookies_signature(cookies)
+
+
 async def persist_login_cookies(context: BrowserContext) -> None:
+    """凭证有变化时才写盘: 登录完成、Cookie 续期后立即保存, 中断也不丢。"""
+    global _saved_cookies
     cookies = await context.cookies(ZHS_COOKIE_URLS)
-    if cookies:
+    signature = _cookies_signature(cookies)
+    if signature is None or signature == _saved_cookies:
+        return
+    try:
         save_cookies(cookies, COOKIE_PATH)
-        logger.event("保存登录凭证", 条数=len(cookies), 文件=COOKIE_PATH)
+    except Exception as exc:
+        logger.log_exception("保存登录 Cookies 失败.", exc)
+        return
+    _saved_cookies = signature
+    logger.event("保存登录凭证", 条数=len(cookies), 文件=COOKIE_PATH)
 
 
 def get_screen_size():
@@ -184,10 +216,12 @@ async def ensure_login(
         if not is_login_page(page.url):
             logger.info("使用Cookies登录成功!")
             logger.event("登录状态", 结果="Cookies 有效", 地址=page.url)
+            await persist_login_cookies(context)
             return True
         logger.warn("检测到 Cookies 已失效, 将重新登录.", shift=True)
         logger.event("登录状态", 结果="Cookies 失效", 地址=page.url)
         clear_cookies(COOKIE_PATH)
+        remember_login_cookies(None)
         cookies = None
 
     if not config.username or not config.password:
@@ -212,93 +246,98 @@ async def main(config) -> bool:
     logger.section("登录")
     async with async_playwright() as p:
         cookies = load_cookies(COOKIE_PATH)
+        remember_login_cookies(cookies)
         logger.event("本地凭证", 数量=len(cookies) if cookies else 0, 文件=COOKIE_PATH)
         page, context = await init_page(p, config, cookies)
-        login_by_cookie = await ensure_login(context, page, cookies, config, modules)
+        monitor_task = None
+        try:
+            login_by_cookie = await ensure_login(context, page, cookies, config, modules)
 
-        logger.context(登录方式="Cookie" if login_by_cookie else "账号")
-        tasks.extend(
-            [
-                asyncio.create_task(
-                    wait_for_verify(page, config, event_loop_verify)
-                ),
-                asyncio.create_task(video_optimize(page, config)),
-                asyncio.create_task(skip_questions(page, event_loop_answer)),
-                asyncio.create_task(play_video(page, playback_enabled)),
-            ]
-        )
-        logger.event(
-            "后台任务启动",
-            任务=", ".join(task.get_coro().__name__ for task in tasks),
-        )
-        if config.enableHideWindow:
-            await hide_window(page)
-        monitor_task = asyncio.create_task(task_monitor(tasks))
+            logger.context(登录方式="Cookie" if login_by_cookie else "账号")
+            tasks.extend(
+                [
+                    asyncio.create_task(
+                        wait_for_verify(page, config, event_loop_verify)
+                    ),
+                    asyncio.create_task(video_optimize(page, config)),
+                    asyncio.create_task(skip_questions(page, event_loop_answer)),
+                    asyncio.create_task(play_video(page, playback_enabled)),
+                ]
+            )
+            logger.event(
+                "后台任务启动",
+                任务=", ".join(task.get_coro().__name__ for task in tasks),
+            )
+            if config.enableHideWindow:
+                await hide_window(page)
+            monitor_task = asyncio.create_task(task_monitor(tasks))
 
-        course_total = len(config.course_urls)
-        for index, course_url in enumerate(config.course_urls, 1):
-            logger.section(f"课程 {index}/{course_total}")
-            logger.context(课程序号=f"{index}/{course_total}", 课程地址=course_url)
-            logger.info("正在加载播放页...")
-            await page.goto(course_url, wait_until="commit")
-            await page.wait_for_timeout(1500)
-            if "login" in page.url:
-                logger.warn(
-                    "播放页跳转到登录页, 当前登录状态已失效, 正在重新登录.",
-                    shift=True,
-                )
-                logger.event("登录失效", 地址=page.url)
-                clear_cookies(COOKIE_PATH)
-                await ensure_login(context, page, None, config, modules)
-                logger.info("重新进入播放页...")
+            course_total = len(config.course_urls)
+            for index, course_url in enumerate(config.course_urls, 1):
+                logger.section(f"课程 {index}/{course_total}")
+                logger.context(课程序号=f"{index}/{course_total}", 课程地址=course_url)
+                logger.info("正在加载播放页...")
                 await page.goto(course_url, wait_until="commit")
                 await page.wait_for_timeout(1500)
-
-            catalog = await detect_catalog_after_verification(page, page.url)
-            logger.info(f"检测到 {catalog.name} 课程目录.")
-            logger.context(目录类型=catalog.name)
-            logger.event("课程目录", 类型=catalog.name, 地址=page.url)
-            await optimize_page(page, config, catalog)
-            logger.info("页面优化完成!")
-            if catalog.course_title:
-                title_element = page.locator(catalog.course_title).first
-                if await title_element.count():
-                    title = " ".join(
-                        (await title_element.text_content() or "").split()
+                if "login" in page.url:
+                    logger.warn(
+                        "播放页跳转到登录页, 当前登录状态已失效, 正在重新登录.",
+                        shift=True,
                     )
-                    if title:
-                        logger.info(f"当前课程:<<{title}>>")
-                        logger.context(课程名称=title)
-                        logger.event("当前课程", 名称=title)
+                    logger.event("登录失效", 地址=page.url)
+                    clear_cookies(COOKIE_PATH)
+                    remember_login_cookies(None)
+                    await ensure_login(context, page, None, config, modules)
+                    logger.info("重新进入播放页...")
+                    await page.goto(course_url, wait_until="commit")
+                    await page.wait_for_timeout(1500)
 
-            playback_enabled.clear()
-            outcome = await run_course(
-                page, catalog, config, logger, playback_enabled
-            )
-            playback_enabled.clear()
-            logger.event("课程结果", 结果=outcome.value, 目录类型=catalog.name)
-            if outcome is CourseOutcome.FAILED:
-                logger.warn("课程未确认完成,已停止本轮运行.", shift=True)
-                run_ok = False
-                break
-            if outcome is CourseOutcome.TIME_LIMIT:
-                all_courses_complete = False
+                catalog = await detect_catalog_after_verification(page, page.url)
+                logger.info(f"检测到 {catalog.name} 课程目录.")
+                logger.context(目录类型=catalog.name)
+                logger.event("课程目录", 类型=catalog.name, 地址=page.url)
+                await persist_login_cookies(context)
+                await optimize_page(page, config, catalog)
+                logger.info("页面优化完成!")
+                if catalog.course_title:
+                    title_element = page.locator(catalog.course_title).first
+                    if await title_element.count():
+                        title = " ".join(
+                            (await title_element.text_content() or "").split()
+                        )
+                        if title:
+                            logger.info(f"当前课程:<<{title}>>")
+                            logger.context(课程名称=title)
+                            logger.event("当前课程", 名称=title)
 
-        for task in tasks:
-            task.cancel()
-        if monitor_task:
-            monitor_task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        if monitor_task:
-            await asyncio.gather(monitor_task, return_exceptions=True)
-        try:
-            await persist_login_cookies(context)
-        except Exception as exc:
-            logger.log_exception("刷新登录 Cookies 失败.", exc)
-        try:
-            await context.browser.close()
-        except TargetClosedError:
-            pass
+                playback_enabled.clear()
+                outcome = await run_course(
+                    page, catalog, config, logger, playback_enabled
+                )
+                playback_enabled.clear()
+                logger.event("课程结果", 结果=outcome.value, 目录类型=catalog.name)
+                if outcome is CourseOutcome.FAILED:
+                    logger.warn("课程未确认完成,已停止本轮运行.", shift=True)
+                    run_ok = False
+                    break
+                if outcome is CourseOutcome.TIME_LIMIT:
+                    all_courses_complete = False
+        finally:
+            for task in tasks:
+                task.cancel()
+            if monitor_task:
+                monitor_task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if monitor_task:
+                await asyncio.gather(monitor_task, return_exceptions=True)
+            try:
+                await persist_login_cookies(context)
+            except Exception as exc:
+                logger.log_exception("刷新登录 Cookies 失败.", exc)
+            try:
+                await context.browser.close()
+            except TargetClosedError:
+                pass
 
     logger.section("任务结束")
     logger.event(
