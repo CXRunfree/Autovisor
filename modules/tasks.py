@@ -1,4 +1,6 @@
 import asyncio
+import time
+
 from playwright.async_api import TimeoutError
 from playwright.async_api import Page
 from modules.configs import Config
@@ -42,8 +44,9 @@ async def has_visible_element(page: Page, selectors: tuple[str, ...]) -> bool:
         except TargetClosedError:
             raise
         except Exception as exc:
-            logger.debug(
-                f"可见元素检测遇到页面切换: {logger.summarize_exception(exc)}"
+            logger.debug_throttled(
+                "has_visible_element",
+                f"可见元素检测遇到页面切换: {logger.summarize_exception(exc)}",
             )
     return False
 
@@ -100,18 +103,26 @@ async def video_optimize(page: Page, config: Config) -> None:
             await page.wait_for_selector("video", state="attached", timeout=3000)
             volume = await get_video_attr(page, "volume")
             rate = await get_video_attr(page, "playbackRate")
+            changes = []
             if config.soundOff and volume != 0:
                 await page.evaluate(config.volume_none)
                 await page.evaluate(config.set_none_icon)
+                changes.append(f"音量 {volume}->0")
             if rate != config.limitSpeed:
                 await page.evaluate(config.revise_speed)
                 await page.evaluate(config.revise_speed_name)
+                changes.append(f"倍速 {rate}->{config.limitSpeed}")
+            if changes:
+                logger.event("播放器调节", 项目=", ".join(changes))
         except TargetClosedError:
             logger.debug("浏览器已关闭, 视频调节模块停止运行.")
             return
         except Exception as e:
             if is_expected_polling_error(e):
-                logger.debug(f"视频调节模块轮询未命中: {logger.summarize_exception(e)}")
+                logger.debug_throttled(
+                    "video_optimize",
+                    f"视频调节模块轮询未命中: {logger.summarize_exception(e)}",
+                )
             else:
                 logger.log_exception("视频调节模块执行失败.", e)
             continue
@@ -147,6 +158,7 @@ async def play_video(
                 if not paused:
                     await page.evaluate('document.querySelector("video").pause();')
                     logger.info("检测到遮罩层,已暂停视频等待处理.")
+                    logger.event("遮罩层暂停", 播放器时间=round(state["currentTime"], 1))
                 continue
             at_end = state["ended"] or video_at_end(
                 state["currentTime"], state["duration"]
@@ -156,12 +168,20 @@ async def play_video(
                 await page.wait_for_selector(".videoArea", timeout=1000)
                 await page.evaluate('document.querySelector("video").play();')
                 logger.debug("视频已恢复播放.")
+                logger.event(
+                    "恢复播放",
+                    播放器时间=round(state["currentTime"], 1),
+                    总时长=round(state["duration"], 1),
+                )
         except TargetClosedError:
             logger.debug("浏览器已关闭, 视频播放模块停止运行.")
             return
         except Exception as e:
             if is_expected_polling_error(e):
-                logger.debug(f"视频播放模块轮询未命中: {logger.summarize_exception(e)}")
+                logger.debug_throttled(
+                    "play_video",
+                    f"视频播放模块轮询未命中: {logger.summarize_exception(e)}",
+                )
             else:
                 logger.log_exception("视频播放模块执行失败.", e)
             continue
@@ -176,25 +196,29 @@ async def skip_questions(page: Page, event_loop) -> None:
                 if not await has_visible_element(page, (".topic-title",)):
                     continue
                 logger.warn("检测到新版课中弹题,请在浏览器中手动处理.", shift=True)
+                logger.event("新版课中弹题", 处理方式="手动", 地址=page.url)
                 while await has_visible_element(page, (".topic-title",)):
                     await asyncio.sleep(0.5)
                 event_loop.set()
                 continue
             if "hike.zhihuishu.com" in page.url:
                 logger.warn("当前课程为新版本,不支持自动答题.", shift=True)
+                logger.event("答题", 结果="跳过", 原因="课程版本不支持")
                 return
             await asyncio.sleep(2)
             ques_element = await page.wait_for_selector(".el-scrollbar__view", state="attached", timeout=1000)
             total_ques = await ques_element.query_selector_all(".number")
             if total_ques:
-                logger.debug(f"检测到{len(total_ques)}道题目.")
-            for ques in total_ques:
-                await ques.click(timeout=500)
-                if not await page.query_selector(".answer"):
-                    choices = await page.query_selector_all(".topic-item")
-                    for each in choices[:2]:
-                        await each.click(timeout=500)
-                        await page.wait_for_timeout(100)
+                answered = 0
+                for ques in total_ques:
+                    await ques.click(timeout=500)
+                    if not await page.query_selector(".answer"):
+                        choices = await page.query_selector_all(".topic-item")
+                        for each in choices[:2]:
+                            await each.click(timeout=500)
+                            await page.wait_for_timeout(100)
+                        answered += 1
+                logger.event("课中答题", 题目数=len(total_ques), 已作答=answered)
             await page.press(".el-dialog", "Escape", timeout=1000)
             event_loop.set()
         except TargetClosedError:
@@ -202,7 +226,10 @@ async def skip_questions(page: Page, event_loop) -> None:
             return
         except Exception as e:
             if is_expected_polling_error(e):
-                logger.debug(f"答题模块轮询未命中: {logger.summarize_exception(e)}")
+                logger.debug_throttled(
+                    "skip_questions",
+                    f"答题模块轮询未命中: {logger.summarize_exception(e)}",
+                )
             else:
                 logger.log_exception("答题模块执行失败.", e)
             if "fusioncourseh5" in page.url:
@@ -228,6 +255,8 @@ async def wait_for_verify(page: Page, config, event_loop) -> None:
                 continue
             event_loop.clear()
             logger.warn("检测到安全验证,请手动完成验证...", shift=True)
+            logger.event("安全验证", 状态="开始", 地址=page.url)
+            wait_start = time.time()
             if config.enableHideWindow:
                 await display_window(page)
             await wait_until_verification_hidden(page)
@@ -235,13 +264,17 @@ async def wait_for_verify(page: Page, config, event_loop) -> None:
             if config.enableHideWindow:
                 await hide_window(page)
             logger.info("安全验证已完成.", shift=True)
+            logger.event("安全验证", 状态="完成", 耗时=f"{time.time() - wait_start:.1f}s")
             await asyncio.sleep(2)
         except TargetClosedError:
             logger.debug("浏览器已关闭, 安全验证模块停止运行.")
             return
         except Exception as e:
             if is_expected_polling_error(e):
-                logger.debug(f"安全验证模块轮询未命中: {logger.summarize_exception(e)}")
+                logger.debug_throttled(
+                    "wait_for_verify",
+                    f"安全验证模块轮询未命中: {logger.summarize_exception(e)}",
+                )
             else:
                 logger.log_exception("安全验证模块执行失败.", e)
             continue

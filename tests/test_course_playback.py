@@ -17,6 +17,12 @@ class _Logger:
     def debug(self, *_args, **_kwargs):
         pass
 
+    def event(self, *_args, **_kwargs):
+        pass
+
+    def debug_throttled(self, *_args, **_kwargs):
+        pass
+
 
 class CoursePlaybackTests(unittest.IsolatedAsyncioTestCase):
     @patch(

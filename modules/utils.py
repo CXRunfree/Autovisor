@@ -237,6 +237,13 @@ async def get_video_attr(page, attr: str) -> any:
     except TargetClosedError as e:
         logger.debug(f"浏览器关闭时停止读取视频属性 {attr}: {logger.summarize_exception(e)}")
         return None
+    except TimeoutError:
+        # 视频元素尚未挂载属于轮询常态, 不能每次打印完整堆栈
+        logger.debug_throttled(
+            f"video_attr:{attr}",
+            f"读取视频属性超时,视频元素未就绪: {attr}",
+        )
+        return None
     except Exception as e:
         logger.log_exception(f"读取视频属性失败. attr: {attr}", e)
         return None

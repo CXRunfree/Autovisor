@@ -1,5 +1,6 @@
 import re
 import sys
+import time
 import platform
 import zipfile
 import os
@@ -106,19 +107,44 @@ def test_mirrors(config_obj=config):
     available_mirrors = []
     for name, url in config_obj.mirrors.items():
         logger.info(f"正在测试 {name} 镜像源...")
+        started = time.time()
         try:
             response = requests.get(url + "/simple/0", headers=MIRROR_HEADERS, timeout=5)  # 设置超时，避免卡住
+            elapsed = f"{time.time() - started:.1f}s"
             if response.status_code == 200:
                 logger.info(f"{name} 镜像源 连接成功！")
+                logger.event(
+                    "镜像测试", 名称=name, 结果="可用", 状态码=response.status_code, 耗时=elapsed
+                )
                 available_mirrors.append((name, url))
             else:
                 logger.error(f"{name} 镜像源 连接失败（状态码 {response.status_code}）！")
+                logger.event(
+                    "镜像测试",
+                    名称=name,
+                    结果="不可用",
+                    状态码=response.status_code,
+                    耗时=elapsed,
+                )
         except requests.exceptions.RequestException as e:
             logger.error(f"{name} 镜像源 连接失败：{e}")
+            logger.event(
+                "镜像测试",
+                名称=name,
+                结果="异常",
+                错误=type(e).__name__,
+                耗时=f"{time.time() - started:.1f}s",
+            )
             continue
 
     if not available_mirrors:
         logger.error("所有镜像源都不可用！")
+    else:
+        logger.event(
+            "可用镜像源",
+            数量=len(available_mirrors),
+            列表=", ".join(name for name, _ in available_mirrors),
+        )
     return available_mirrors
 
 
@@ -195,6 +221,14 @@ def download_wheel(mirror_name, base_url, package_name, version=None, config_obj
         raise ValueError(f"下载的 {whl_path} 不是有效的 wheel 文件,请检查镜像源响应。")
 
     logger.info(f"{whl_path} 下载完成！")
+    logger.event(
+        "下载依赖",
+        包=package_name,
+        版本=version or "不限",
+        镜像=mirror_name,
+        文件=whl_path,
+        大小=f"{os.path.getsize(whl_path) / 1024 / 1024:.1f}MB",
+    )
     return whl_path
 
 
@@ -227,9 +261,26 @@ def install_package(package, version, mirrors, config_obj=config):
             add_runtime_search_paths(res_dir)
             module = import_module(alias)
             logger.info(f"{package}-{version} 安装完成!")
+            logger.event(
+                "安装依赖",
+                包=package,
+                版本=version,
+                模块=alias,
+                镜像=mirror_name,
+                目录=res_dir,
+                模块版本=getattr(module, "__version__", "未知"),
+            )
             return module
         except Exception as e:
             logger.error(f"{package}-{version} 使用 {mirror_name} 镜像源失败，将尝试下一个镜像源：{e}")
+            logger.event(
+                "安装依赖",
+                包=package,
+                版本=version,
+                镜像=mirror_name,
+                结果="失败",
+                错误=logger.summarize_exception(e),
+            )
         finally:
             if wheel_path and os.path.exists(wheel_path):
                 os.remove(wheel_path)
@@ -263,6 +314,7 @@ def start(config_obj=config):
     mirrors = None  # 避免重复测试镜像
     for package, version in packages.items():
         module, exist = is_installed(package, version)
+        logger.event("依赖状态", 包=package, 版本=version, 已安装=exist)
         if not exist:
             if mirrors is None:  # 仅在首次遇到导入失败时测试镜像
                 mirrors = test_mirrors(config_obj)

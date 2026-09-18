@@ -7,6 +7,7 @@ from modules.course_playback import elapsed_minutes, learn_lesson, review_lesson
 from modules.lesson_navigation import (
     CatalogSelectors,
     detect_catalog,
+    lesson_progress,
     wait_for_lesson_active,
 )
 from modules.tasks import has_visible_verification, wait_until_verification_hidden
@@ -53,27 +54,51 @@ async def run_course(
         if learning
         else await get_filtered_class(page, catalog, include_all=True)
     )
+    logger.event(
+        "目录筛选",
+        模式="学习" if learning else "复习",
+        待学课时=len(to_learn),
+        本轮课时=len(lessons),
+    )
     if not lessons:
         logger.error("课程目录中没有可播放的视频课时.")
+        logger.event("课程结果", 结果="无可用课时")
         return CourseOutcome.FAILED
 
     start_time = time.time()
     paused_time = 0.0
     for index, lesson in enumerate(lessons):
+        position = f"{index + 1}/{len(lessons)}"
         playback_enabled.clear()
         await lesson.click()
         active = await wait_for_lesson_active(lesson, catalog)
         if not active:
             logger.warn("课时切换超时,正在重试一次.", shift=True)
+            logger.event(
+                "课时激活超时",
+                序号=position,
+                目录类型=catalog.name,
+                选择器=catalog.active,
+            )
             await lesson.click()
             active = await wait_for_lesson_active(lesson, catalog)
         if not active:
             logger.error(f"无法选中课时,目录类型: {catalog.name}")
+            logger.event("课程结果", 结果="课时无法选中", 序号=position)
             return CourseOutcome.FAILED
 
         await page.wait_for_timeout(1000)
         title = await get_lesson_name(page, lesson, catalog)
         logger.info(f"正在学习:{title}")
+        initial_progress = await lesson_progress(lesson, catalog)
+        logger.context(课时序号=position, 课时名称=title)
+        logger.event(
+            "课时开始",
+            序号=position,
+            标题=title,
+            平台进度=f"{initial_progress}%",
+        )
+        lesson_start = time.time()
         page.set_default_timeout(10000)
         await page.wait_for_selector("video", state="attached")
         playback_enabled.set()
@@ -88,16 +113,34 @@ async def run_course(
             )
         paused_time += added_pause
 
+        final_progress = await lesson_progress(lesson, catalog)
+        logger.event(
+            "课时结果",
+            序号=position,
+            标题=title,
+            完成=completed,
+            达到时限=reached_limit,
+            平台进度=f"{final_progress}%",
+            本课用时=f"{time.time() - lesson_start:.0f}s",
+        )
         if reached_limit:
             logger.info(f"当前课程已达时限:{config.limitMaxTime}min", shift=True)
             logger.info("即将进入下门课程!")
+            logger.event("课程结果", 结果="达到时限", 课时数=len(lessons))
             return CourseOutcome.TIME_LIMIT
         if not completed:
             logger.warn(
                 f'"{title}" 未能确认播放完成,本轮停止切换下一课.',
                 shift=True,
             )
+            logger.event(
+                "课程结果",
+                结果="课时未确认完成",
+                序号=position,
+                平台进度=f"{final_progress}%",
+            )
             return CourseOutcome.FAILED
+
         if index < len(lessons) - 1:
             logger.info(f'"{title}" 已完成!', shift=True)
             logger.info(
@@ -109,4 +152,5 @@ async def run_course(
         print("==" * 10)
     else:
         logger.info(f'"{title}" 已完成!', shift=True)
+    logger.event("课程结果", 结果="全部完成", 课时数=len(lessons))
     return CourseOutcome.COMPLETED
