@@ -67,9 +67,15 @@ class Logger:
         module = frame.f_globals.get("__name__", "?")
         return f"{module}.{frame.f_code.co_name}:{frame.f_lineno}"
 
-    def write_log(self, msg, raw=False):
+    def write_log(self, msg, level=None, raw=False):
+        """写入一条日志: [时间] [级别] [调用位置] 内容; 多行明细不带级别。"""
         if raw:
             record = msg
+        elif level:
+            record = (
+                f"[{self._timestamp()}] [{level}] "
+                f"[{self._source_location()}] {msg}"
+            )
         else:
             record = f"[{self._timestamp()}] [{self._source_location()}] {msg}"
         with self._write_lock:
@@ -101,7 +107,7 @@ class Logger:
             print(f"\n日志文件已保存至: {self.filename}")
 
     def debug(self, msg):
-        self.write_log(f"[DEBUG] {msg}\n")
+        self.write_log(f"{msg}\n", level="DEBUG")
 
     def debug_throttled(self, key, msg, interval=60):
         """轮询类日志限时折叠: 同一 key 每 interval 秒最多写一条, 期间次数汇总到下一行。"""
@@ -131,10 +137,10 @@ class Logger:
             for key, value in fields.items()
             if value is not None and value != ""
         )
-        line = f"[EVENT] {name}"
+        line = name
         if details:
-            line = f"{line} | {details}"
-        self.write_log(f"{line}\n")
+            line = f"{name} | {details}"
+        self.write_log(f"{line}\n", level="EVENT")
 
     def context(self, **fields):
         """更新运行状态(课程、课时、阶段等), 异常日志会自动附带。"""
@@ -168,7 +174,7 @@ class Logger:
         else:
             text = f"\r\033[32m[INFO]\033[0m {msg}"
         print(text.ljust(50))
-        self.write_log(f"[INFO] {msg}\n")
+        self.write_log(f"{msg}\n", level="INFO")
 
     def warn(self, msg, shift=False):
         if shift:
@@ -176,7 +182,7 @@ class Logger:
         else:
             text = f"\r\033[33m[WARN]\033[0m {msg}"
         print(text.ljust(50))
-        self.write_log(f"[WARN] {msg}\n")
+        self.write_log(f"{msg}\n", level="WARN")
 
     def error(self, msg, shift=False, with_context=True):
         if shift:
@@ -184,7 +190,7 @@ class Logger:
         else:
             text = f"\r\033[31m[ERROR]\033[0m {msg}"
         print(text.ljust(50))
-        self.write_log(f"[ERROR] {msg}\n")
+        self.write_log(f"{msg}\n", level="ERROR")
         if with_context:
             state = self.context_text()
             if state:

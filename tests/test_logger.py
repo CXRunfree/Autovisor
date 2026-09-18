@@ -51,7 +51,7 @@ class DebugThrottledTests(LogFileTestCase):
     def setUp(self):
         super().setUp()
         self.written = []
-        self.logger.write_log = self.written.append
+        self.logger.write_log = lambda msg, **kwargs: self.written.append(msg)
         self.clock = FakeClock()
         patcher = mock.patch("modules.logger.time.monotonic", self.clock)
         patcher.start()
@@ -60,20 +60,20 @@ class DebugThrottledTests(LogFileTestCase):
 
     def test_first_message_is_written_immediately(self):
         self.logger.debug_throttled("k", "miss")
-        self.assertEqual(self.written, ["[DEBUG] miss\n"])
+        self.assertEqual(self.written, ["miss\n"])
 
     def test_repeats_within_interval_are_folded(self):
         self.logger.debug_throttled("k", "miss")
         for _ in range(3):
             self.clock.advance(5)
             self.logger.debug_throttled("k", "miss")
-        self.assertEqual(self.written, ["[DEBUG] miss\n"])
+        self.assertEqual(self.written, ["miss\n"])
 
         self.clock.advance(60)
         self.logger.debug_throttled("k", "miss")
         self.assertEqual(
             self.written,
-            ["[DEBUG] miss\n", "[DEBUG] miss (期间折叠 3 次)\n"],
+            ["miss\n", "miss (期间折叠 3 次)\n"],
         )
 
     def test_interval_window_starts_from_last_write(self):
@@ -84,7 +84,7 @@ class DebugThrottledTests(LogFileTestCase):
         self.logger.debug_throttled("k", "miss")
         self.assertEqual(
             self.written,
-            ["[DEBUG] miss\n", "[DEBUG] miss (期间折叠 1 次)\n"],
+            ["miss\n", "miss (期间折叠 1 次)\n"],
         )
 
     def test_keys_are_throttled_independently(self):
@@ -95,23 +95,39 @@ class DebugThrottledTests(LogFileTestCase):
         self.logger.debug_throttled("b", "miss b")
         self.assertEqual(
             self.written,
-            ["[DEBUG] miss a\n", "[DEBUG] miss b\n"],
+            ["miss a\n", "miss b\n"],
         )
 
     def test_custom_interval(self):
         self.logger.debug_throttled("k", "miss", interval=5)
         self.clock.advance(5)
         self.logger.debug_throttled("k", "miss", interval=5)
-        self.assertEqual(self.written, ["[DEBUG] miss\n", "[DEBUG] miss\n"])
+        self.assertEqual(self.written, ["miss\n", "miss\n"])
 
 
 class LogRecordTests(LogFileTestCase):
-    def test_record_contains_time_source_and_message(self):
+    def test_record_prefix_order_is_time_level_source(self):
         self.logger.debug("hello")
         line = self.lines()[-1]
-        self.assertRegex(line, r"^\[\d{2}:\d{2}:\d{2}\.\d{3}\] ")
-        self.assertIn("test_logger.test_record_contains_time_source_and_message:", line)
-        self.assertIn("[DEBUG] hello", line)
+        self.assertRegex(
+            line,
+            r"^\[\d{2}:\d{2}:\d{2}\.\d{3}\] \[DEBUG\] "
+            r"\[[\w.]*test_logger\.[\w_]+:\d+\] hello$",
+        )
+
+    def test_every_level_uses_the_same_prefix_order(self):
+        self.logger.info("i", shift=True)
+        self.logger.warn("w", shift=True)
+        self.logger.error("e", shift=True)
+        self.logger.event("ev", 键="值")
+        prefixes = [
+            r"\[INFO\] \[[\w.]*test_logger\.[\w_]+:\d+\] i$",
+            r"\[WARN\] \[[\w.]*test_logger\.[\w_]+:\d+\] w$",
+            r"\[ERROR\] \[[\w.]*test_logger\.[\w_]+:\d+\] e$",
+            r"\[EVENT\] \[[\w.]*test_logger\.[\w_]+:\d+\] ev \| 键=值$",
+        ]
+        for line, expected in zip(self.lines(), prefixes):
+            self.assertRegex(line, expected)
 
     def test_source_location_skips_logger_internals(self):
         self.logger.info("hello", shift=True)
@@ -122,7 +138,8 @@ class LogRecordTests(LogFileTestCase):
     def test_event_renders_fields_and_skips_empty(self):
         self.logger.event("课时开始", 序号="1/3", 标题="第一章", 备注=None, 空="")
         line = self.lines()[-1]
-        self.assertIn("[EVENT] 课时开始 | 序号=1/3 标题=第一章", line)
+        self.assertIn("[EVENT]", line)
+        self.assertIn("课时开始 | 序号=1/3 标题=第一章", line)
         self.assertNotIn("备注", line)
         self.assertNotIn("空=", line)
 
@@ -135,7 +152,7 @@ class LogRecordTests(LogFileTestCase):
                 self.logger.event("播放状态", interval=60, 进度="12%")
             clock.advance(60)
             self.logger.event("播放状态", interval=60, 进度="13%")
-        self.assertIn("[EVENT] 播放状态 | 进度=12%", self.text())
+        self.assertIn("播放状态 | 进度=12%", self.text())
         self.assertIn("进度=13% 期间折叠=4", self.text())
         self.assertEqual(len([line for line in self.lines() if "播放状态" in line]), 2)
 
@@ -163,7 +180,8 @@ class LogRecordTests(LogFileTestCase):
         self.logger.context(course="高数", lesson="1.1")
         self.logger.error("出错了")
         text = self.text()
-        self.assertIn("[ERROR] 出错了", text)
+        self.assertIn("[ERROR]", text)
+        self.assertIn("出错了", text)
         self.assertIn("运行状态: course=高数 lesson=1.1", text)
 
     def test_error_without_context_has_no_state(self):
