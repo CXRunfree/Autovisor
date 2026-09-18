@@ -88,7 +88,7 @@ class Logger:
             tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         else:
             tb = traceback.format_exc()
-        self.error(msg, shift=shift)
+        self.error(msg, shift=shift, with_context=False)
         if detail_lines:
             self.write_log("\n".join(detail_lines) + "\n")
         state = self.context_text()
@@ -178,10 +178,14 @@ class Logger:
         print(text.ljust(50))
         self.write_log(f"[WARN] {msg}\n")
 
-    def error(self, msg, shift=False):
+    def error(self, msg, shift=False, with_context=True):
         if shift:
             text = f"\r\n\033[31m[ERROR]\033[0m {msg}"
         else:
             text = f"\r\033[31m[ERROR]\033[0m {msg}"
         print(text.ljust(50))
         self.write_log(f"[ERROR] {msg}\n")
+        if with_context:
+            state = self.context_text()
+            if state:
+                self.write_log(f"运行状态: {state}\n")

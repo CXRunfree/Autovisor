@@ -157,6 +157,18 @@ class LogRecordTests(LogFileTestCase):
         self.assertIn("异常详情: boom", text)
         self.assertIn("运行状态: course=高数 lesson=1.1", text)
         self.assertIn("Traceback (most recent call last)", text)
+        self.assertEqual(text.count("运行状态:"), 1)
+
+    def test_error_includes_run_state(self):
+        self.logger.context(course="高数", lesson="1.1")
+        self.logger.error("出错了")
+        text = self.text()
+        self.assertIn("[ERROR] 出错了", text)
+        self.assertIn("运行状态: course=高数 lesson=1.1", text)
+
+    def test_error_without_context_has_no_state(self):
+        self.logger.error("出错了")
+        self.assertNotIn("运行状态:", self.text())
 
     def test_context_can_be_cleared(self):
         self.logger.context(course="高数", lesson="1.1")
