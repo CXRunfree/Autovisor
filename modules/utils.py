@@ -232,11 +232,6 @@ async def optimize_page(
 async def get_video_attr(page, attr: str) -> any:
     try:
         await page.wait_for_selector("video", state="attached", timeout=1000)
-        attr = await page.evaluate(f'''document.querySelector('video').{attr}''')
-        return attr
-    except TargetClosedError as e:
-        logger.debug(f"浏览器关闭时停止读取视频属性 {attr}: {logger.summarize_exception(e)}")
-        return None
     except TimeoutError:
         # 视频元素尚未挂载属于轮询常态, 不能每次打印完整堆栈
         logger.debug_throttled(
@@ -244,9 +239,43 @@ async def get_video_attr(page, attr: str) -> any:
             f"读取视频属性超时,视频元素未就绪: {attr}",
         )
         return None
-    except Exception as e:
-        logger.log_exception(f"读取视频属性失败. attr: {attr}", e)
+    except TargetClosedError as e:
+        logger.debug(f"浏览器关闭时停止读取视频属性 {attr}: {logger.summarize_exception(e)}")
         return None
+    return await run_on(page, "video", f"(el) => el[{attr!r}]", f"读取视频属性 {attr}")
+
+
+# 元素不存在时由页面脚本返回的哨兵值
+_MISSING = "__autovisor_missing__"
+
+
+async def run_on(page, selector: str, action: str, purpose: str):
+    """在匹配 selector 的元素上执行 action(el)。
+
+    元素不存在时返回 None 并记一条带选择器的节流日志; 脚本报错同样返回 None,
+    但会把选择器与用途写进异常日志, 便于定位是哪个元素/类名出的问题。
+    """
+    script = (
+        "() => {"
+        f" const el = document.querySelector({selector!r});"
+        f" if (!el) return {_MISSING!r};"
+        f" return ({action})(el);"
+        " }"
+    )
+    try:
+        result = await page.evaluate(script)
+    except TargetClosedError:
+        raise
+    except Exception as exc:
+        logger.log_exception(f"{purpose}失败(选择器: {selector}).", exc)
+        return None
+    if result == _MISSING:
+        logger.debug_throttled(
+            f"run_on:{selector}",
+            f"{purpose}跳过: 页面未找到元素 {selector}",
+        )
+        return None
+    return result
 
 
 async def get_lesson_name(

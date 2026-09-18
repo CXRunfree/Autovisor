@@ -7,7 +7,6 @@ from modules.lesson_navigation import WISDOM_CATALOG
 
 class _Config:
     limitMaxTime = 0
-    reset_curtime = ""
 
 
 class _Logger:

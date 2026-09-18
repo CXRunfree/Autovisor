@@ -4,7 +4,7 @@ import time
 from playwright.async_api import TimeoutError
 from playwright.async_api import Page
 from modules.configs import Config
-from modules.utils import get_video_attr, display_window, hide_window
+from modules.utils import get_video_attr, display_window, hide_window, run_on
 from playwright._impl._errors import TargetClosedError
 from modules.logger import Logger
 from modules.video_state import video_at_end
@@ -46,7 +46,8 @@ async def has_visible_element(page: Page, selectors: tuple[str, ...]) -> bool:
         except Exception as exc:
             logger.debug_throttled(
                 "has_visible_element",
-                f"可见元素检测遇到页面切换: {logger.summarize_exception(exc)}",
+                f"可见元素检测遇到页面切换({', '.join(selectors)}): "
+                f"{logger.summarize_exception(exc)}",
             )
     return False
 
@@ -100,17 +101,39 @@ async def video_optimize(page: Page, config: Config) -> None:
     while True:
         try:
             await asyncio.sleep(2)
-            await page.wait_for_selector("video", state="attached", timeout=3000)
+            try:
+                await page.wait_for_selector("video", state="attached", timeout=3000)
+            except TimeoutError:
+                logger.debug_throttled(
+                    "video:optimize",
+                    "视频调节跳过: 页面未找到元素 video",
+                )
+                continue
             volume = await get_video_attr(page, "volume")
             rate = await get_video_attr(page, "playbackRate")
             changes = []
             if config.soundOff and volume != 0:
-                await page.evaluate(config.volume_none)
-                await page.evaluate(config.set_none_icon)
+                await run_on(page, "video", "(el) => { el.volume = 0; }", "设置静音")
+                await run_on(
+                    page,
+                    ".volumeBox",
+                    '(el) => el.classList.add("volumeNone")',
+                    "更新静音图标",
+                )
                 changes.append(f"音量 {volume}->0")
             if rate != config.limitSpeed:
-                await page.evaluate(config.revise_speed)
-                await page.evaluate(config.revise_speed_name)
+                await run_on(
+                    page,
+                    "video",
+                    f"(el) => {{ el.playbackRate = {config.limitSpeed}; }}",
+                    "设置倍速",
+                )
+                await run_on(
+                    page,
+                    ".speedBox span",
+                    f'(el) => {{ el.innerText = "X {config.limitSpeed}"; }}',
+                    "更新倍速标签",
+                )
                 changes.append(f"倍速 {rate}->{config.limitSpeed}")
             if changes:
                 logger.event("播放器调节", 项目=", ".join(changes))
@@ -135,28 +158,39 @@ async def play_video(
     while True:
         try:
             await asyncio.sleep(2)
-            await page.wait_for_selector("video", state="attached", timeout=1000)
-            if playback_enabled is not None and not playback_enabled.is_set():
-                paused = await page.evaluate("document.querySelector('video').paused")
-                if not paused:
-                    await page.evaluate('document.querySelector("video").pause();')
+            try:
+                await page.wait_for_selector("video", state="attached", timeout=1000)
+            except TimeoutError:
+                logger.debug_throttled(
+                    "video:play",
+                    "视频播放跳过: 页面未找到元素 video",
+                )
                 continue
-            state = await page.evaluate(
-                """() => {
-                    const video = document.querySelector('video');
-                    return {
-                        paused: video.paused,
-                        ended: video.ended,
-                        currentTime: video.currentTime,
-                        duration: video.duration,
-                    };
-                }"""
+            if playback_enabled is not None and not playback_enabled.is_set():
+                paused = await run_on(
+                    page, "video", "(el) => el.paused", "读取视频暂停状态"
+                )
+                if paused is False:
+                    await run_on(page, "video", "(el) => el.pause()", "暂停视频")
+                continue
+            state = await run_on(
+                page,
+                "video",
+                """(el) => ({
+                    paused: el.paused,
+                    ended: el.ended,
+                    currentTime: el.currentTime,
+                    duration: el.duration,
+                })""",
+                "读取播放器状态",
             )
+            if state is None:
+                continue
             paused = state["paused"]
             blocked = await has_blocking_overlay(page)
             if blocked:
                 if not paused:
-                    await page.evaluate('document.querySelector("video").pause();')
+                    await run_on(page, "video", "(el) => el.pause()", "遮罩层暂停视频")
                     logger.info("检测到遮罩层,已暂停视频等待处理.")
                     logger.event("遮罩层暂停", 播放器时间=round(state["currentTime"], 1))
                 continue
@@ -165,8 +199,15 @@ async def play_video(
             )
             if paused and not at_end:
                 logger.info("检测到视频暂停,正在尝试播放.")
-                await page.wait_for_selector(".videoArea", timeout=1000)
-                await page.evaluate('document.querySelector("video").play();')
+                try:
+                    await page.wait_for_selector(".videoArea", timeout=1000)
+                except TimeoutError:
+                    logger.debug_throttled(
+                        "videoArea",
+                        "尝试播放跳过: 页面未找到元素 .videoArea",
+                    )
+                    continue
+                await run_on(page, "video", "(el) => el.play()", "恢复播放")
                 logger.debug("视频已恢复播放.")
                 logger.event(
                     "恢复播放",
@@ -228,7 +269,8 @@ async def skip_questions(page: Page, event_loop) -> None:
             if is_expected_polling_error(e):
                 logger.debug_throttled(
                     "skip_questions",
-                    f"答题模块轮询未命中: {logger.summarize_exception(e)}",
+                    f"答题模块轮询未命中(元素 .el-scrollbar__view/.el-dialog): "
+                    f"{logger.summarize_exception(e)}",
                 )
             else:
                 logger.log_exception("答题模块执行失败.", e)
@@ -273,7 +315,8 @@ async def wait_for_verify(page: Page, config, event_loop) -> None:
             if is_expected_polling_error(e):
                 logger.debug_throttled(
                     "wait_for_verify",
-                    f"安全验证模块轮询未命中: {logger.summarize_exception(e)}",
+                    f"安全验证模块轮询未命中(元素 .yidun_modal/.yidun_popup/tcaptcha): "
+                    f"{logger.summarize_exception(e)}",
                 )
             else:
                 logger.log_exception("安全验证模块执行失败.", e)

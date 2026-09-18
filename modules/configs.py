@@ -38,16 +38,7 @@ class Config:
         self.bg_js = '''return document.getElementsByClassName("yidun_bg-img")[0].src'''
         # 弹窗
         self.pop_js = '''document.getElementsByClassName("iconfont iconguanbi")[0].click();'''
-        self.close_ques = '''document.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, keyCode: 27 }));'''
 
-        # 视频元素修改
-        self.remove_pause = "document.querySelector('video').pause = ()=>{}"
-        self.play_video = '''const video = document.querySelector('video');video.play();'''
-        self.volume_none = "document.querySelector('video').volume=0;"
-        self.set_none_icon = '''document.querySelector(".volumeBox").classList.add("volumeNone")'''
-        self.reset_curtime = '''document.querySelector('video').currentTime=0;'''
-        # 夜间模式
-        self.night_js = '''document.getElementsByClassName("Patternbtn-div")[0].click()'''
         self.mirrors = self._read_mirrors(mirrors_path)
 
     def _read_config(self) -> None:
@@ -135,11 +126,3 @@ class Config:
         self._read_config()
         speed = self._safe_get_float('course-option', 'limitSpeed', 1.0)
         return min(max(speed, 0.5), 1.8)
-
-    @property
-    def revise_speed(self) -> str:
-        return f"document.querySelector('video').playbackRate={self.limitSpeed};"
-
-    @property
-    def revise_speed_name(self) -> str:
-        return f'''document.querySelector(".speedBox span").innerText = "X {self.limitSpeed}";'''

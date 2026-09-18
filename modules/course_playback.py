@@ -15,7 +15,7 @@ from modules.tasks import (
     has_visible_verification,
     wait_until_verification_hidden,
 )
-from modules.utils import get_video_attr
+from modules.utils import get_video_attr, run_on
 from modules.video_state import (
     has_valid_duration,
     tail_retry_time,
@@ -291,7 +291,7 @@ async def learn_lesson(
             else:
                 logger.debug_throttled(
                     "course_playback",
-                    f"学习进度轮询未命中: {logger.summarize_exception(exc)}",
+                    f"学习进度轮询未命中(元素 video): {logger.summarize_exception(exc)}",
                 )
 
 
@@ -314,7 +314,7 @@ async def review_lesson(
         return paused_time, False, False
     logger.event("视频元数据", 时长=f"{total_time:.1f}s", 暂停=f"{paused_time:.1f}s")
     try:
-        await page.evaluate(config.reset_curtime)
+        await run_on(page, "video", "(el) => { el.currentTime = 0; }", "重置播放进度")
     except TargetClosedError:
         return paused_time, False, False
     last_video_time = -1.0
@@ -396,5 +396,5 @@ async def review_lesson(
             else:
                 logger.debug_throttled(
                     "review_lesson",
-                    f"复习进度轮询未命中: {logger.summarize_exception(exc)}",
+                    f"复习进度轮询未命中(元素 video): {logger.summarize_exception(exc)}",
                 )

@@ -97,13 +97,15 @@ async def detect_catalog(
         await page.wait_for_selector(selector, state="attached", timeout=timeout_ms)
     except TimeoutError as exc:
         raise RuntimeError(
-            "课程目录加载超时，未识别到新版、旧版或翻转课目录"
+            f"课程目录加载超时, 未识别到新版/旧版/翻转课目录(尝试的选择器: {selector})"
         ) from exc
 
     for catalog in candidates:
         if await page.locator(catalog.item).count() > 0:
             return catalog
-    raise RuntimeError("课程目录结构无法识别")
+    raise RuntimeError(
+        f"课程目录结构无法识别(已存在目录节点但未匹配: {selector})"
+    )
 
 
 async def lesson_progress(lesson: Locator, catalog: CatalogSelectors) -> int:
