@@ -425,7 +425,11 @@ def cli() -> int:
     finally:
         logger.save()
         if getattr(sys, "frozen", False) and sys.stdin.isatty():
-            input("程序已结束,按Enter退出...")
+            try:
+                input("程序已结束,按Enter退出...")
+            except EOFError:
+                # 非交互式运行(重定向/自动化)时 stdin 可能已关闭, 不应视作异常
+                pass
     return exit_code
 
 
