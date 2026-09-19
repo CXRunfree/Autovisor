@@ -29,6 +29,7 @@ class _Page:
         self.wait_error = wait_error
         self.scripts = []
         self.evaluate_calls = 0
+        self.wait_timeouts = []
 
     async def evaluate(self, script, arg=None):
         self.evaluate_calls += 1
@@ -38,6 +39,7 @@ class _Page:
         return self.result
 
     async def wait_for_selector(self, selector, state=None, timeout=None):
+        self.wait_timeouts.append((selector, timeout))
         if self.wait_error:
             raise self.wait_error
 
@@ -109,6 +111,99 @@ class GetVideoAttrTests(LoggerPatchMixin, unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await utils.get_video_attr(page, "paused"))
         self.assertEqual(len(self.logger.throttled), 1)
         self.assertIn("video", self.logger.throttled[0][1])
+
+
+class _OptionalLocatorPage:
+    """locator(...).first 的替身, 模拟"可选弹窗不存在"的页面"""
+
+    def __init__(self, error=None):
+        self.error = error
+        self.timeouts = []
+
+    def locator(self, selector):
+        return self
+
+    @property
+    def first(self):
+        return self
+
+    async def count(self):
+        return 0
+
+    async def is_visible(self):
+        return False
+
+    async def click(self, timeout=None):
+        raise AssertionError("不存在的弹窗不应被点击")
+
+    async def evaluate(self, js, timeout=None):
+        self.timeouts.append(timeout)
+        if self.error:
+            raise self.error
+        return None
+
+
+class OptionalElementTests(LoggerPatchMixin, unittest.IsolatedAsyncioTestCase):
+    async def test_evaluate_js_skips_quietly_when_element_absent(self):
+        page = _Page(wait_error=PlaywrightTimeoutError("hidden"))
+        await utils.evaluate_js(page, ".studytime-div", "close()")
+        self.assertEqual(page.evaluate_calls, 0)
+        self.assertEqual(self.logger.exceptions, [])
+        self.assertEqual(len(self.logger.throttled), 1)
+        key, msg = self.logger.throttled[0]
+        self.assertEqual(key, "evaluate_js:.studytime-div")
+        self.assertIn(".studytime-div", msg)
+
+    async def test_evaluate_js_default_wait_is_bounded(self):
+        page = _Page()
+        await utils.evaluate_js(page, ".studytime-div", "close()")
+        self.assertEqual(
+            page.wait_timeouts, [(".studytime-div", utils.OPTIONAL_POPUP_TIMEOUT_MS)]
+        )
+        self.assertEqual(page.evaluate_calls, 1)
+
+    async def test_evaluate_js_keeps_explicit_timeout(self):
+        page = _Page()
+        await utils.evaluate_js(page, ".exploreTip", "remove()", timeout=1500)
+        self.assertEqual(page.wait_timeouts, [(".exploreTip", 1500)])
+
+    async def test_evaluate_on_element_skips_quietly_when_absent(self):
+        page = _OptionalLocatorPage(error=PlaywrightTimeoutError("hidden"))
+        await utils.evaluate_on_element(page, ".aiMsg.once", "el => el.remove()")
+        self.assertEqual(self.logger.exceptions, [])
+        self.assertEqual(len(self.logger.throttled), 1)
+        self.assertEqual(self.logger.throttled[0][0], "evaluate_on_element:.aiMsg.once")
+        self.assertEqual(page.timeouts, [utils.OPTIONAL_POPUP_TIMEOUT_MS])
+
+    async def test_optional_popup_timeout_stays_far_below_page_default(self):
+        self.assertLessEqual(utils.OPTIONAL_POPUP_TIMEOUT_MS, 60_000)
+
+
+class OptimizePageTests(LoggerPatchMixin, unittest.IsolatedAsyncioTestCase):
+    async def test_legacy_popup_wait_is_bounded(self):
+        page = _OptionalLocatorPage()
+        config = mock.Mock(pop_js="document.getElementsByClassName('x')[0].click();")
+        catalog = mock.Mock()
+        catalog.name = "legacy"
+        evaluate_js = mock.AsyncMock()
+        with mock.patch.object(utils, "evaluate_js", evaluate_js), mock.patch.object(
+            utils, "evaluate_on_element", mock.AsyncMock()
+        ):
+            await utils.optimize_page(page, config, catalog)
+        evaluate_js.assert_awaited_once()
+        args, kwargs = evaluate_js.await_args
+        self.assertEqual(args[1], ".studytime-div")
+        self.assertEqual(kwargs.get("timeout"), utils.OPTIONAL_POPUP_TIMEOUT_MS)
+
+    async def test_modern_catalog_skips_legacy_popup(self):
+        page = _OptionalLocatorPage()
+        config = mock.Mock(pop_js="close()")
+        catalog = mock.Mock()
+        catalog.name = "hike"
+        evaluate_js = mock.AsyncMock()
+        with mock.patch.object(utils, "evaluate_js", evaluate_js):
+            await utils.optimize_page(page, config, catalog)
+        evaluate_js.assert_not_awaited()
 
 
 if __name__ == "__main__":

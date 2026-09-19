@@ -26,6 +26,10 @@ else:
 
 logger = Logger()
 
+# 可选元素(弹窗等)的等待上限: 这类元素只在特定条件下出现, 不存在时必须尽快跳过。
+# 打包版把页面默认超时设为 24 小时, 沿用默认值会让整轮学习一直卡在原地。
+OPTIONAL_POPUP_TIMEOUT_MS = 10_000
+
 
 def get_runtime_root():
     return logger.runtime_root
@@ -173,6 +177,9 @@ async def get_browser_window(page: Page) -> object | None:
 
 
 async def evaluate_js(page: Page, wait_selector, js: str, timeout=None, is_hike_class=False) -> None:
+    """等待可选元素(如弹窗)后执行页面脚本; 元素未出现时跳过, 不无期限等待。"""
+    if timeout is None:
+        timeout = OPTIONAL_POPUP_TIMEOUT_MS
     try:
         if wait_selector and is_hike_class is False:
             await page.wait_for_selector(wait_selector, timeout=timeout)
@@ -181,6 +188,13 @@ async def evaluate_js(page: Page, wait_selector, js: str, timeout=None, is_hike_
     except TargetClosedError as e:
         logger.debug(f"浏览器关闭时停止执行页面脚本: {logger.summarize_exception(e)}")
         return
+    except TimeoutError:
+        # 弹窗等可选元素未出现属于正常情况: 记节流日志即可, 不能当成异常
+        logger.debug_throttled(
+            f"evaluate_js:{wait_selector}",
+            f"页面脚本跳过: 等待元素超时 {wait_selector}",
+        )
+        return
     except Exception as e:
         logger.log_exception(f"执行页面脚本失败. Selector: {wait_selector} JS: {js}", e)
         return
@@ -188,12 +202,21 @@ async def evaluate_js(page: Page, wait_selector, js: str, timeout=None, is_hike_
 
 async def evaluate_on_element(page: Page, selector: str, js: str, timeout: float = None,
                               is_hike_class=False) -> None:
+    """在可选元素上执行脚本; 元素未出现时跳过, 不无期限等待。"""
+    if timeout is None:
+        timeout = OPTIONAL_POPUP_TIMEOUT_MS
     try:
         if selector and is_hike_class is False:
             element = page.locator(selector).first
             await element.evaluate(js, timeout=timeout)
     except TargetClosedError as e:
         logger.debug(f"浏览器关闭时停止执行元素脚本: {logger.summarize_exception(e)}")
+        return
+    except TimeoutError:
+        logger.debug_throttled(
+            f"evaluate_on_element:{selector}",
+            f"元素脚本跳过: 等待元素超时 {selector}",
+        )
         return
     except Exception as e:
         logger.log_exception(f"执行元素脚本失败. Selector: {selector} JS: {js}", e)
@@ -213,7 +236,14 @@ async def optimize_page(
             logger.info("已关闭学前必读弹窗.")
 
         if catalog.name == "legacy":
-            await evaluate_js(page, ".studytime-div", config.pop_js)
+            # "学习时长/学前必读"弹窗(.studytime-div)只在未读过时显示: 节点常驻 DOM,
+            # 平台不提示时它是 0x0 的隐藏节点, 等它可见会一直等下去。
+            await evaluate_js(
+                page,
+                ".studytime-div",
+                config.pop_js,
+                timeout=OPTIONAL_POPUP_TIMEOUT_MS,
+            )
             hour = time.localtime().tm_hour
             if hour >= 18 or hour < 7:
                 await evaluate_on_element(page, ".Patternbtn-div", "el=>el.click()", timeout=1500)
