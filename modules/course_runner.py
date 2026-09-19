@@ -13,6 +13,13 @@ from modules.lesson_navigation import (
 from modules.tasks import has_visible_verification, wait_until_verification_hidden
 from modules.utils import get_filtered_class, get_lesson_name
 
+# 课时项(<li>)的点击发生在 set_default_timeout(10000) 之前, 不显式限时就会沿用
+# 页面默认的 24 小时; 弹窗未关、被遮挡等异常情况下会一直卡在可操作性等待上。
+LESSON_CLICK_TIMEOUT_MS = 10_000
+
+# 目录节点在 detect_catalog 里刚确认过存在, 这里只做一次快速复核。
+CATALOG_ATTACH_TIMEOUT_MS = 5_000
+
 
 class CourseOutcome(Enum):
     COMPLETED = "completed"
@@ -46,7 +53,9 @@ async def run_course(
     logger,
     playback_enabled,
 ) -> CourseOutcome:
-    await page.wait_for_selector(catalog.item, state="attached")
+    await page.wait_for_selector(
+        catalog.item, state="attached", timeout=CATALOG_ATTACH_TIMEOUT_MS
+    )
     to_learn = await get_filtered_class(page, catalog)
     learning = bool(to_learn)
     lessons = (
@@ -70,7 +79,7 @@ async def run_course(
     for index, lesson in enumerate(lessons):
         position = f"{index + 1}/{len(lessons)}"
         playback_enabled.clear()
-        await lesson.click()
+        await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
         active = await wait_for_lesson_active(lesson, catalog)
         if not active:
             logger.warn("课时切换超时,正在重试一次.", shift=True)
@@ -80,7 +89,7 @@ async def run_course(
                 目录类型=catalog.name,
                 选择器=catalog.active,
             )
-            await lesson.click()
+            await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
             active = await wait_for_lesson_active(lesson, catalog)
         if not active:
             logger.error(f"无法选中课时,目录类型: {catalog.name}")
