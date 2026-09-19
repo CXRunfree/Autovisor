@@ -4,18 +4,38 @@ from contextlib import redirect_stdout
 from io import StringIO
 from unittest.mock import patch
 
-from modules.installer import build_wheel_url, install_package, is_compatible_wheel, validate_python_version, wheel_tags
+from modules.installer import (
+    DEFAULT_PACKAGES,
+    build_wheel_url,
+    install_package,
+    is_compatible_wheel,
+    runtime_packages,
+    validate_python_version,
+    wheel_tags,
+)
 from modules.progress import show_progress
 
 
 class InstallerTests(unittest.TestCase):
     def test_rejects_unsupported_python_version(self):
-        with self.assertRaises(RuntimeError):
-            validate_python_version(SimpleNamespace(major=3, minor=13))
+        for minor in (9, 14):
+            with self.assertRaises(RuntimeError):
+                validate_python_version(SimpleNamespace(major=3, minor=minor))
 
     def test_accepts_supported_python_versions(self):
-        for minor in (10, 11, 12):
+        for minor in (10, 11, 12, 13):
             validate_python_version(SimpleNamespace(major=3, minor=minor))
+
+    def test_runtime_packages_match_python_version(self):
+        self.assertEqual(
+            {"numpy": "2.1.3", "opencv-python": "4.10.0.84"},
+            runtime_packages(SimpleNamespace(major=3, minor=13)),
+        )
+        for minor in (10, 11, 12):
+            self.assertEqual(
+                DEFAULT_PACKAGES,
+                runtime_packages(SimpleNamespace(major=3, minor=minor)),
+            )
 
     def test_parses_wheel_tags(self):
         self.assertEqual(
@@ -37,6 +57,16 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue(is_compatible_wheel(
             "opencv_python-4.10.0.82-cp37-abi3-win_amd64.whl",
             "opencv-python", "4.10.0.82", "cp311", "cp311", "win_amd64",
+        ))
+
+    def test_rejects_free_threaded_wheel(self):
+        self.assertTrue(is_compatible_wheel(
+            "numpy-2.1.3-cp313-cp313-win_amd64.whl",
+            "numpy", "2.1.3", "cp313", "cp313", "win_amd64",
+        ))
+        self.assertFalse(is_compatible_wheel(
+            "numpy-2.1.3-cp313-cp313t-win_amd64.whl",
+            "numpy", "2.1.3", "cp313", "cp313", "win_amd64",
         ))
 
     def test_progress_handles_missing_content_length(self):

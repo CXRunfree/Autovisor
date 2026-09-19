@@ -17,7 +17,22 @@ config = Config()
 logger = Logger()
 
 
-SUPPORTED_PYTHON = ((3, 10), (3, 11), (3, 12))
+SUPPORTED_PYTHON = ((3, 10), (3, 11), (3, 12), (3, 13))
+
+# 运行时依赖版本按解释器区分:
+# - numpy 1.26.4 没有 cp313 wheel, 3.13 必须用 numpy 2.x;
+# - opencv 4.10.0.82 是按 numpy 1.x ABI 编译的, 配 numpy 2 会在 import cv2 时报错,
+#   因此 3.13 用同为 abi3 但支持 numpy 2 的 4.10.0.84。
+DEFAULT_PACKAGES = {"numpy": "1.26.4", "opencv-python": "4.10.0.82"}
+PACKAGES_BY_PYTHON = {
+    (3, 13): {"numpy": "2.1.3", "opencv-python": "4.10.0.84"},
+}
+
+
+def runtime_packages(version_info=sys.version_info):
+    return PACKAGES_BY_PYTHON.get(
+        (version_info.major, version_info.minor), DEFAULT_PACKAGES
+    )
 
 # 清华等镜像会拒绝浏览器风格的 User-Agent(403), 必须使用 pip 风格 UA。
 MIRROR_HEADERS = {"User-Agent": "pip/24.3.1"}
@@ -55,12 +70,13 @@ def is_compatible_wheel(filename, package, version, python_tag, abi_tag, platfor
     actual_version = normalize_version(package, wheel_version)
     if (requested_version and actual_version != requested_version) or wheel_platform != platform_tag:
         return False
-    python_ok = python_tag in wheel_python or "py3" in wheel_python
+    # 精确匹配 python/abi 标签: 子串匹配会把 cp313t(自由线程) 误当成 cp313。
+    python_ok = wheel_python == python_tag or "py3" in wheel_python
     if "abi3" in wheel_abi:
         match = re.fullmatch(r"cp(\d+)", wheel_python)
         if match:
             python_ok = int(python_tag[2:]) >= int(match.group(1))
-    abi_ok = abi_tag in wheel_abi or "abi3" in wheel_abi or "none" in wheel_abi
+    abi_ok = wheel_abi == abi_tag or "abi3" in wheel_abi or "none" in wheel_abi
     return python_ok and abi_ok
 
 
@@ -312,7 +328,7 @@ def start(config_obj=config):
     os.makedirs(res_dir, exist_ok=True)
     add_runtime_search_paths(res_dir)
     mirrors = None  # 避免重复测试镜像
-    for package, version in packages.items():
+    for package, version in runtime_packages().items():
         module, exist = is_installed(package, version)
         logger.event("依赖状态", 包=package, 版本=version, 已安装=exist)
         if not exist:
@@ -330,11 +346,6 @@ def start(config_obj=config):
     return modules
 
 
-# 设置下载包名和版本（可选）
-packages = {
-    "numpy": "1.26.4",
-    "opencv-python": "4.10.0.82",
-}
 # 包名映射
 mapping = {
     "numpy": "numpy",
