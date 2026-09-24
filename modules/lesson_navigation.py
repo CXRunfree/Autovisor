@@ -32,11 +32,19 @@ WISDOM_CATALOG = CatalogSelectors(
 
 FUSION_CATALOG = CatalogSelectors(
     name="fusion",
-    item=".chapter-content-second",
+    # 真实融合课小节的容器是 .chapter-item(完整课时列表, 含 finish-icon);
+    # .chapter-content-second 只是"当前展开层级的子节点"(真站实测仅 4/58),
+    # 用它会漏采大部分课时, 故校准为 .chapter-item。
+    item=".chapter-item",
     active=".chapter-content-second.current",
     finish=".finish-icon",
     title=".item-name",
     active_class="current",
+    # 融合课每课时带一个圆形进度环 .el-progress(在 item 内部),
+    # aria-valuenow 给出真实已学百分比(缓增, 而非只到 0/100)。
+    # 补上后 lesson_progress 能读到中间值, 支撑"播完未到100->回退重播"上报。
+    progress=".el-progress",
+    progress_attribute="aria-valuenow",
 )
 
 HIKE_CATALOG = CatalogSelectors(
@@ -143,9 +151,19 @@ async def wait_for_lesson_active(
     lesson: Locator, catalog: CatalogSelectors, timeout_ms: int = 8_000
 ) -> bool:
     deadline = asyncio.get_running_loop().time() + timeout_ms / 1000
+    # 一些目录结构(如融合课)的"当前激活"标识挂在课时内部子节点上
+    # (例如 .chapter-item 内的 .chapter-content-second.current), 课时自身无 active class,
+    # 因此除了检查本节点 active_class, 还需回退检查内部是否命中 catalog.active。
+    has_active_descendant = bool(catalog.active)
     while asyncio.get_running_loop().time() < deadline:
         if has_class(await lesson.get_attribute("class"), catalog.active_class):
             return True
+        if has_active_descendant:
+            try:
+                if await lesson.locator(catalog.active).count() > 0:
+                    return True
+            except Exception:
+                has_active_descendant = False
         await asyncio.sleep(0.2)
     return False
 

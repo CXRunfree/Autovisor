@@ -16,6 +16,7 @@ from modules.tasks import (
     wait_until_verification_hidden,
 )
 from modules.utils import get_video_attr, run_on
+from modules.fusion_adapter import FusionAdapter
 from modules.video_state import (
     has_valid_duration,
     tail_retry_time,
@@ -109,6 +110,12 @@ async def learn_lesson(
                 waited = await _wait_for_topic_hidden(page)
                 paused_time += waited
                 logger.event("课中弹题等待", 模块="学习进度", 耗时=f"{waited:.1f}s")
+                retry_count = 0
+                last_activity = time.monotonic()
+                continue
+
+            # 融合共享课: AI 随堂练习弹窗自动选作答+提交(官方 learn_lesson 未处理)。
+            if catalog.name == "fusion" and await FusionAdapter.skip_ai_exercise(page):
                 retry_count = 0
                 last_activity = time.monotonic()
                 continue
