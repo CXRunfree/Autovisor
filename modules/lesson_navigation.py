@@ -40,6 +40,11 @@ FUSION_CATALOG = CatalogSelectors(
     finish=".finish-icon",
     title=".item-name",
     active_class="current",
+    # 融合课每课时带一个圆形进度环 .el-progress(在 item 内部),
+    # aria-valuenow 给出真实已学百分比(缓增, 而非只到 0/100)。
+    # 补上后 lesson_progress 能读到中间值, 支撑"播完未到100->回退重播"上报。
+    progress=".el-progress",
+    progress_attribute="aria-valuenow",
 )
 
 HIKE_CATALOG = CatalogSelectors(
