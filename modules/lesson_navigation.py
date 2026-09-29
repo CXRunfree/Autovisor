@@ -1,5 +1,6 @@
 import asyncio
 import math
+import re
 from dataclasses import dataclass
 
 from playwright.async_api import Locator, Page, TimeoutError
@@ -32,9 +33,8 @@ WISDOM_CATALOG = CatalogSelectors(
 
 FUSION_CATALOG = CatalogSelectors(
     name="fusion",
-    # 真实融合课小节的容器是 .chapter-item(完整课时列表, 含 finish-icon);
-    # .chapter-content-second 只是"当前展开层级的子节点"(真站实测仅 4/58),
-    # 用它会漏采大部分课时, 故校准为 .chapter-item。
+    # .chapter-item 包含独立课时或章节组; 章节组内的实际课时是其直接子节点
+    # .chapter-content-second. get_filtered_class 会按目录顺序展开这些子课时。
     item=".chapter-item",
     active=".chapter-content-second.current",
     finish=".finish-icon",
@@ -70,6 +70,8 @@ LEGACY_CATALOG = CatalogSelectors(
 )
 
 CATALOGS = (WISDOM_CATALOG, FUSION_CATALOG, HIKE_CATALOG, LEGACY_CATALOG)
+
+_LESSON_NUMBER = re.compile(r"^\s*(\d+(?:\.\d+)+)(?=[^\d.]|$)")
 
 
 def parse_progress_value(value) -> int:
@@ -171,15 +173,24 @@ async def wait_for_lesson_active(
 async def get_lesson_title(
     page: Page, lesson: Locator, catalog: CatalogSelectors
 ) -> str:
-    scoped = lesson.locator(catalog.title).first
-    title_element = scoped if await scoped.count() else page.locator(catalog.title).first
+    # A missing label must not fall back to an unrelated title elsewhere on
+    # the page (for example, the first chapter or a course-summary row).
+    title_element = lesson.locator(catalog.title).first
+    title = ""
     if await title_element.count():
-        title = await title_element.get_attribute("title")
-        if title:
-            return title.strip()
-        text = await title_element.text_content()
-        if text:
-            return " ".join(text.split())
+        title = await title_element.get_attribute("title") or ""
+        if not title.strip():
+            title = await title_element.text_content() or ""
+        title = " ".join(title.split())
 
-    text = await lesson.text_content()
-    return " ".join((text or "当前课时").split())
+    if title and catalog.name != "fusion":
+        return title
+
+    row_text = " ".join((await lesson.text_content() or "").split())
+    if title:
+        # Fusion renders the lesson number separately from .item-name.
+        number = _LESSON_NUMBER.match(row_text)
+        if number and not _LESSON_NUMBER.match(title):
+            return f"{number.group(1)} {title}"
+        return title
+    return row_text or "当前课时"

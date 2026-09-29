@@ -325,6 +325,16 @@ async def get_filtered_class(
         pass
 
     all_class = await page.locator(catalog.item).all()
+    if catalog.name == "fusion":
+        # A chapter-item may wrap a section heading and several video lessons.
+        # Read each child's own progress, never a sibling's finish icon through
+        # their shared parent. Standalone chapter-items remain playable rows.
+        lesson_rows = []
+        for row in all_class:
+            children = await row.locator(":scope > .chapter-content-second").all()
+            lesson_rows.extend(children if children else [row])
+        all_class = lesson_rows
+
     if include_all:
         logger.debug(f"Get to-review class: {len(all_class)}")
         return all_class

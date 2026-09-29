@@ -37,7 +37,10 @@ jobs:
       - name: Install dependencies (incl. captcha extra)
         run: uv sync --extra captcha
 
-      - name: Unit tests
+      - name: Install Chromium for offline catalog regression tests
+        run: uv run playwright install chromium
+
+      - name: Unit and offline browser tests
         run: uv run python -m unittest discover -s tests -v
 
       - name: Prepare config (captcha branch)

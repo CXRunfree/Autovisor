@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  .item-box, .chapter-content-second { padding: 12px; }
+</style>
+<!-- Synthetic catalog: no account, course URL, or production page data. -->
+<div class="item-name">Unrelated course summary</div>
+<div class="chapter-content">
+  <div class="chapter-item" id="group">
+    <div class="item-box">5.3 <span class="item-name">Section heading</span></div>
+    <div class="chapter-content-second" id="lesson-531">
+      <span class="finish-icon"></span>
+      5.3.1 <span class="item-name" title="First lesson">First lesson</span>
+    </div>
+    <div class="chapter-content-second" id="lesson-532">
+      <span class="el-progress" aria-valuenow="24"></span>
+      5.3.2 <span class="item-name">Second lesson</span>
+    </div>
+    <div class="chapter-content-second" id="lesson-533">
+      5.3.3 <span class="item-name">Third lesson</span>
+    </div>
+  </div>
+  <div class="chapter-item" id="lesson-54">
+    <div class="item-box">5.4 <span class="item-name">Standalone lesson</span></div>
+  </div>
+</div>
+<video></video>
+<script>
+  window.clickedLessons = [];
+  for (const row of document.querySelectorAll('[id^="lesson-"]')) {
+    row.addEventListener('click', () => {
+      document.querySelectorAll('.current').forEach(el => el.classList.remove('current'));
+      row.classList.add('current');
+      window.clickedLessons.push(row.id);
+    });
+  }
+</script>
