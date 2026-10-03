@@ -93,6 +93,24 @@ cp config.macos.ini.example config.macos.ini
 
 首次运行会自动部署环境 (安装 `uv`、依赖和必要的浏览器), 之后直接启动. 环境或配置变化时会自动重新部署, 也可用 `./run_macos.sh --setup` 强制重建.
 
+##### 可选：DeepSeek 课中视觉验证（实验性）
+
+源码运行时可在 `[script-option]` 设置 `enableVisionCaptcha = True`，尝试处理易盾的单点点击题（字母、数字或图形）。默认关闭，与登录滑块开关 `enableAutoCaptcha` 相互独立。不支持滑块、多点或其他验证类型；朝向题仍可能识别失败，不能保证通过率。
+
+Windows 和 macOS 均直接读取本地配置文件；在 `config.ini`（macOS 启动脚本默认使用 `config.macos.ini`）中填写：
+
+```ini
+[script-option]
+enableVisionCaptcha = True
+deepseekApiKey = 在这里填写自己的DeepSeek_API_Key
+```
+
+Key 不需要加引号，不读取环境变量或系统钥匙串。开启后若 `deepseekApiKey` 留空，程序会提示并等待手动验证。示例模板的 Key 默认留空；实际本地配置包含明文凭据，已被 `.gitignore` 排除，请勿上传或共享。可用 `--config` 指定独立配置，让不同账号分别使用自己的 Key。
+
+启用后，程序会把**验证图片和题目文字**发送到 DeepSeek 官方接口 `https://api.deepseek.com/chat/completions`，使用 `deepseek-flash`；请求会产生 API 费用。程序不发送账号密码或 Cookie，不把验证截图、原始模型回复或 Key 写入日志。日志只记录尝试次数、归一化坐标、HTTP 状态码和结果。
+
+每次检测到验证最多尝试 3 次。模型无法确定目标、题目发生变化、坐标越界、API 出错或验证未通过时，会保留手动处理路径；失败不会无限调用 API。成功以弹窗消失为判据，后续视频与平台进度仍由原有播放逻辑检查。必要依赖 `httpx` 和 `Pillow` 已在基础依赖中，不需要安装本地视觉模型或额外的 OpenCV 依赖。
+
 #### 四、发行版下载
 
 - Github: [Releases · CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor/releases)
@@ -155,7 +173,7 @@ cp config.macos.ini.example config.macos.ini
 ------
 #### 已知问题
 
-- **长时间挂机**有概率弹出人机验证, 程序检测到后会暂停操作, 直到手动验证完成;
+- **长时间挂机**有概率弹出人机验证, 程序检测到后会暂停操作；默认需要手动验证，开启实验性视觉验证后仍可能需要手动处理;
 - 浏览器窗口若**最小化**可能导致视频播放进度不增加;
 - 若出现其他异常崩溃, 请提交 issue 并附上报错信息.
 
