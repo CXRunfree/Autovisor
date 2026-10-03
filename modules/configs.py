@@ -26,6 +26,7 @@ class Config:
             self.cdp_url = self._config.get('browser-option', 'cdpUrl', raw=True, fallback='http://127.0.0.1:9222').strip()
             # 脚本选项
             self.enableAutoCaptcha = self.get_bool_field('script-option', 'enableAutoCaptcha')
+            self.enableVisionCaptcha = self.get_bool_field('script-option', 'enableVisionCaptcha', fallback=False)
             self.enableHideWindow = self.get_bool_field('script-option', 'enableHideWindow')
             self.showDonateCode = self.get_bool_field("script-option", "showDonateCode")
             # 课程选项

@@ -7,6 +7,26 @@ from modules.configs import Config, ConfigError
 
 
 class ConfigTests(unittest.TestCase):
+    def test_vision_verification_is_explicitly_opt_in(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = os.path.join(directory, "config.ini")
+            mirrors_path = os.path.join(directory, "mirrors.json")
+            template = (
+                "[user-account]\nusername=\npassword=\n"
+                "[browser-option]\ndriver=chrome\nEXE_PATH=\n"
+                "[script-option]\n{option}\n"
+                "[course-option]\nsoundOff=true\n"
+                "[course-url]\nURL1=\n"
+            )
+            with open(mirrors_path, "w", encoding="utf-8") as file:
+                file.write('{"primary":"https://mirror.example/simple"}')
+            for option, expected in (("", False), ("enableVisionCaptcha=False", False),
+                                     ("enableVisionCaptcha=True", True)):
+                with self.subTest(option=option):
+                    with open(config_path, "w", encoding="utf-8") as file:
+                        file.write(template.format(option=option))
+                    self.assertIs(Config(config_path, mirrors_path).enableVisionCaptcha, expected)
+
     def test_reports_missing_config_file(self):
         with self.assertRaisesRegex(ConfigError, "未找到配置文件"):
             Config("missing-config.ini")

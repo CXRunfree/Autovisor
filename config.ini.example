@@ -12,6 +12,8 @@ EXE_PATH =
 [script-option]
 ;是否自动过登录时的滑块验证(默认:True)
 enableAutoCaptcha = True
+;可选: 使用 DeepSeek 处理课中单点点击验证，需要单独配置 API Key
+enableVisionCaptcha = False
 ;是否自动隐藏浏览器窗口(默认:False)
 enableHideWindow = False
 ;是否展示赞赏码(默认:True)

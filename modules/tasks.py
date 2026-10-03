@@ -296,11 +296,14 @@ async def wait_for_verify(page: Page, config, event_loop) -> None:
             if not await has_visible_verification(page):
                 continue
             event_loop.clear()
-            logger.warn("检测到安全验证,请手动完成验证...", shift=True)
+            logger.warn("检测到安全验证，暂停播放等待验证...", shift=True)
             logger.event("安全验证", 状态="开始", 地址=page.url)
             wait_start = time.time()
             if config.enableHideWindow:
                 await display_window(page)
+            if getattr(config, "enableVisionCaptcha", False):
+                from modules.vision_verification import attempt_course_verification
+                await attempt_course_verification(page, logger)
             await wait_until_verification_hidden(page)
             event_loop.set()
             if config.enableHideWindow:
