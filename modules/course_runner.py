@@ -1,7 +1,8 @@
+import asyncio
 import time
 from enum import Enum
 
-from playwright.async_api import Page
+from playwright.async_api import Page, TimeoutError
 
 from modules.course_playback import elapsed_minutes, learn_lesson, review_lesson
 from modules.lesson_navigation import (
@@ -9,13 +10,17 @@ from modules.lesson_navigation import (
     detect_catalog,
     lesson_progress,
     wait_for_lesson_active,
+    active_lesson,
+    click_lesson,
+    lesson_key,
+    LessonChanged,
 )
 from modules.tasks import has_visible_verification, wait_until_verification_hidden
-from modules.utils import get_filtered_class, get_lesson_name
+from modules.utils import get_filtered_class, get_lesson_name, get_video_attr
+from modules.video_state import has_valid_duration
 from modules.fusion_adapter import FusionAdapter
 
-# 课时项(<li>)的点击发生在 set_default_timeout(10000) 之前, 不显式限时就会沿用
-# 页面默认的 24 小时; 弹窗未关、被遮挡等异常情况下会一直卡在可操作性等待上。
+# 课时点击需要显式限时；弹窗未关、被遮挡时应转入等待恢复，而不是长时间卡住。
 LESSON_CLICK_TIMEOUT_MS = 10_000
 
 # 目录节点在 detect_catalog 里刚确认过存在, 这里只做一次快速复核。
@@ -54,6 +59,7 @@ async def run_course(
     logger,
     playback_enabled,
 ) -> CourseOutcome:
+    page.set_default_timeout(10_000)
     await page.wait_for_selector(
         catalog.item, state="attached", timeout=CATALOG_ATTACH_TIMEOUT_MS
     )
@@ -81,25 +87,82 @@ async def run_course(
 
     start_time = time.time()
     paused_time = 0.0
-    for index, lesson in enumerate(lessons):
-        position = f"{index + 1}/{len(lessons)}"
-        playback_enabled.clear()
-        await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
-        active = await wait_for_lesson_active(lesson, catalog)
-        if not active:
-            logger.warn("课时切换超时,正在重试一次.", shift=True)
-            logger.event(
-                "课时激活超时",
-                序号=position,
-                目录类型=catalog.name,
-                选择器=catalog.active,
-            )
-            await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
-            active = await wait_for_lesson_active(lesson, catalog)
-        if not active:
-            logger.error(f"无法选中课时,目录类型: {catalog.name}")
-            logger.event("课程结果", 结果="课时无法选中", 序号=position)
-            return CourseOutcome.FAILED
+    cursor = -1
+    reviewed = set()
+    adopted = None
+    title = "当前课时"
+    while not page.is_closed():
+        if 0 < config.limitMaxTime <= elapsed_minutes(start_time, paused_time):
+            return CourseOutcome.TIME_LIMIT
+        # 每次切课重新读取目录，平台完成标记和手动选择都是当前现场状态。
+        rows = await get_filtered_class(page, catalog, include_all=True)
+        if not rows:
+            logger.event("等待课程目录", interval=60, 结果="目录正在重载")
+            playback_enabled.set()
+            await asyncio.sleep(1)
+            continue
+        try:
+            keys = [await lesson_key(row, catalog) for row in rows]
+            pending = []
+            for index, row in enumerate(rows):
+                if learning:
+                    if await lesson_progress(row, catalog) < 100:
+                        pending.append(index)
+                elif keys[index] not in reviewed:
+                    pending.append(index)
+        except TimeoutError:
+            logger.event("等待课程目录", interval=60, 结果="目录节点正在更新")
+            await asyncio.sleep(1)
+            continue
+        if adopted is None:
+            if not pending:
+                break
+            index = next((i for i in pending if i > cursor), pending[0])
+            lesson = rows[index]
+            previous = await active_lesson(page, catalog)
+            previous_key = await lesson_key(previous, catalog) if previous is not None else None
+            requested_key = keys[index]
+            playback_enabled.clear()
+            active = False
+            for attempt in range(2):
+                try:
+                    await click_lesson(lesson, catalog, LESSON_CLICK_TIMEOUT_MS)
+                    active = await wait_for_lesson_active(lesson, catalog)
+                except TimeoutError:
+                    active = False
+                if active:
+                    break
+                logger.event("课时激活超时", 课时=requested_key, 尝试=attempt + 1)
+            if not active:
+                logger.warn("课时未选中,保留页面等待手动切课.", shift=True)
+                # 重新开放播放，不能让后台任务暂停用户刚手动选好的视频。
+                playback_enabled.set()
+                while not page.is_closed():
+                    if 0 < config.limitMaxTime <= elapsed_minutes(start_time, paused_time):
+                        return CourseOutcome.TIME_LIMIT
+                    if await has_visible_verification(page):
+                        wait_start = time.time()
+                        await wait_until_verification_hidden(page)
+                        paused_time += time.time() - wait_start
+                    selected = await active_lesson(page, catalog)
+                    if selected is not None:
+                        selected_key = await lesson_key(selected, catalog)
+                        if selected_key == requested_key or selected_key != previous_key:
+                            adopted = selected
+                            break
+                    await asyncio.sleep(1)
+                if page.is_closed():
+                    return CourseOutcome.FAILED
+                continue
+        else:
+            lesson = adopted
+            adopted = None
+            selected_key = await lesson_key(lesson, catalog)
+            if selected_key not in keys:
+                continue
+            index = keys.index(selected_key)
+
+        position = f"{index + 1}/{len(rows)}"
 
         await page.wait_for_timeout(1000)
         title = await get_lesson_name(page, lesson, catalog)
@@ -114,17 +177,22 @@ async def run_course(
         )
         lesson_start = time.time()
         page.set_default_timeout(10000)
-        await page.wait_for_selector("video", state="attached")
         playback_enabled.set()
-
-        if learning:
-            added_pause, completed, reached_limit = await learn_lesson(
-                page, start_time, paused_time, lesson, catalog, config, logger
-            )
-        else:
-            added_pause, completed, reached_limit = await review_lesson(
-                page, start_time, paused_time, config, logger
-            )
+        try:
+            if learning:
+                added_pause, completed, reached_limit = await learn_lesson(
+                    page, start_time, paused_time, lesson, catalog, config, logger
+                )
+            else:
+                added_pause, completed, reached_limit = await review_lesson(
+                    page, start_time, paused_time, config, logger,
+                    current_lesson=lesson, catalog=catalog,
+                )
+        except LessonChanged as exc:
+            paused_time += getattr(exc, "paused_time", 0.0)
+            adopted = await active_lesson(page, catalog)
+            logger.event("手动切课接续", 原课时=title, 原课时已完成=False)
+            continue
         paused_time += added_pause
 
         final_progress = await lesson_progress(lesson, catalog)
@@ -143,23 +211,40 @@ async def run_course(
             logger.event("课程结果", 结果="达到时限", 课时数=len(lessons))
             return CourseOutcome.TIME_LIMIT
         if not completed:
+            if page.is_closed():
+                return CourseOutcome.FAILED
             logger.warn(
-                f'"{title}" 未能确认播放完成,本轮停止切换下一课.',
+                f'"{title}" 播放器暂不可用,保留页面等待恢复或手动切课.',
                 shift=True,
             )
             logger.event(
-                "课程结果",
-                结果="课时未确认完成",
+                "等待播放器恢复",
                 序号=position,
                 平台进度=f"{final_progress}%",
             )
-            return CourseOutcome.FAILED
+            while not page.is_closed():
+                if 0 < config.limitMaxTime <= elapsed_minutes(start_time, paused_time):
+                    return CourseOutcome.TIME_LIMIT
+                if await has_visible_verification(page):
+                    wait_start = time.time()
+                    await wait_until_verification_hidden(page)
+                    paused_time += time.time() - wait_start
+                selected = await active_lesson(page, catalog)
+                if selected is not None and has_valid_duration(await get_video_attr(page, "duration")):
+                    adopted = selected
+                    break
+                await asyncio.sleep(1)
+            if page.is_closed():
+                return CourseOutcome.FAILED
+            continue
 
-        if index < len(lessons) - 1:
-            logger.info(f'"{title}" 已完成!', shift=True)
-            logger.info(
-                f"本次课程已学习:{elapsed_minutes(start_time, paused_time):.1f} min"
-            )
+        cursor = index
+        reviewed.add(keys[index])
+        logger.info(f'"{title}" 已完成!', shift=True)
+        logger.info(f"本次课程已学习:{elapsed_minutes(start_time, paused_time):.1f} min")
+
+    if page.is_closed():
+        return CourseOutcome.FAILED
 
     if learning:
         logger.info("已学完本课程全部内容!", shift=True)
