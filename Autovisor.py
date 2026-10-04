@@ -319,6 +319,7 @@ async def main(config) -> bool:
                 if outcome is CourseOutcome.FAILED:
                     logger.warn("课程未确认完成,已停止本轮运行.", shift=True)
                     run_ok = False
+                    all_courses_complete = False
                     break
                 if outcome is CourseOutcome.TIME_LIMIT:
                     all_courses_complete = False

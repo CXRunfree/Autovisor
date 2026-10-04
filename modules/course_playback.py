@@ -8,6 +8,9 @@ from modules.lesson_navigation import (
     CatalogSelectors,
     lesson_progress,
     wait_for_lesson_completion,
+    ensure_lesson_unchanged,
+    lesson_key,
+    LessonChanged,
 )
 from modules.progress import show_course_progress
 from modules.tasks import (
@@ -22,6 +25,7 @@ from modules.video_state import (
     tail_retry_time,
     time_for_percent,
     video_at_end,
+    is_valid_video_time,
 )
 
 METADATA_TIMEOUT_SECONDS = 30
@@ -75,7 +79,7 @@ async def learn_lesson(
 ) -> tuple[float, bool, bool]:
     total_time, paused_time = await _wait_for_duration(page)
     if not has_valid_duration(total_time):
-        logger.warn("视频元数据加载超时,停止当前课时.", shift=True)
+        logger.warn("视频元数据加载超时,等待播放器恢复.", shift=True)
         logger.event(
             "视频元数据",
             结果="超时",
@@ -84,6 +88,7 @@ async def learn_lesson(
         )
         return paused_time, False, False
     logger.event("视频元数据", 时长=f"{total_time:.1f}s", 暂停=f"{paused_time:.1f}s")
+    current_key = await lesson_key(current_lesson, catalog)
     synced_to_catalog = False
     retry_count = 0
     last_catalog_progress = -1
@@ -92,6 +97,7 @@ async def learn_lesson(
 
     while True:
         try:
+            await ensure_lesson_unchanged(page, catalog, current_key)
             if await has_visible_verification(page):
                 wait_start = time.time()
                 await wait_until_verification_hidden(page)
@@ -131,6 +137,7 @@ async def learn_lesson(
                 completed = await wait_for_lesson_completion(
                     current_lesson, catalog, timeout_ms=5000
                 )
+                await ensure_lesson_unchanged(page, catalog, current_key)
                 logger.event(
                     "课时完成",
                     平台进度=f"{catalog_progress}%",
@@ -145,9 +152,11 @@ async def learn_lesson(
                 last_activity = time.monotonic()
 
             current_time = await get_video_attr(page, "currentTime")
-            if isinstance(current_time, (int, float)) and current_time > last_video_time + 0.25:
+            if is_valid_video_time(current_time):
+                # 比较相邻采样而非历史最高点；回退、重播后马上采用新基准。
+                if abs(current_time - last_video_time) > 0.25:
+                    last_activity = time.monotonic()
                 last_video_time = current_time
-                last_activity = time.monotonic()
             logger.event(
                 "播放状态",
                 interval=60,
@@ -162,7 +171,7 @@ async def learn_lesson(
                 重试次数=retry_count,
             )
             if time.monotonic() - last_activity >= STALL_TIMEOUT_SECONDS:
-                logger.warn("视频和平台进度连续 120 秒未推进,停止当前课时.", shift=True)
+                logger.warn("视频和平台进度连续 120 秒未推进,保留页面等待恢复或手动切课.", shift=True)
                 logger.event(
                     "视频停滞",
                     模块="学习进度",
@@ -174,7 +183,7 @@ async def learn_lesson(
                     平台进度=f"{catalog_progress}%",
                     未推进秒=STALL_TIMEOUT_SECONDS,
                 )
-                return paused_time, False, False
+                last_activity = time.monotonic()
 
             if has_valid_duration(total_time) and isinstance(
                 current_time, (int, float)
@@ -237,6 +246,7 @@ async def learn_lesson(
                         continue
                     refreshed = await lesson_progress(current_lesson, catalog)
                     if refreshed >= 100:
+                        await ensure_lesson_unchanged(page, catalog, current_key)
                         logger.event(
                             "课时完成",
                             平台进度=f"{refreshed}%",
@@ -244,16 +254,20 @@ async def learn_lesson(
                         )
                         return paused_time, True, False
                     if retry_count >= 2:
-                        logger.warn(
-                            f"视频已结束但平台进度停在 {refreshed}%,停止自动重试.",
-                            shift=True,
-                        )
+                        if retry_count == 2:
+                            logger.warn(
+                                f"视频已结束但平台进度停在 {refreshed}%,等待平台确认或手动切课.",
+                                shift=True,
+                            )
+                            retry_count = 3
                         logger.event(
                             "上报重试放弃",
+                            interval=60,
                             平台进度=f"{refreshed}%",
                             重试次数=retry_count,
                         )
-                        return paused_time, False, False
+                        await asyncio.sleep(1)
+                        continue
                     retry_time = (
                         time_for_percent(total_time, refreshed)
                         if catalog.progress
@@ -288,6 +302,9 @@ async def learn_lesson(
                 desc="平台记录进度:", cur_time=f"{catalog_progress}%"
             )
             await asyncio.sleep(0.5)
+        except LessonChanged as exc:
+            exc.paused_time = paused_time
+            raise
         except TargetClosedError:
             return paused_time, False, False
         except TimeoutError as exc:
@@ -308,10 +325,12 @@ async def review_lesson(
     paused_before: float,
     config,
     logger,
+    current_lesson=None,
+    catalog=None,
 ) -> tuple[float, bool, bool]:
     total_time, paused_time = await _wait_for_duration(page)
     if not has_valid_duration(total_time):
-        logger.warn("视频元数据加载超时,停止当前课时.", shift=True)
+        logger.warn("视频元数据加载超时,等待播放器恢复.", shift=True)
         logger.event(
             "视频元数据",
             结果="超时",
@@ -320,7 +339,13 @@ async def review_lesson(
         )
         return paused_time, False, False
     logger.event("视频元数据", 时长=f"{total_time:.1f}s", 暂停=f"{paused_time:.1f}s")
+    current_key = (
+        await lesson_key(current_lesson, catalog)
+        if current_lesson is not None and catalog is not None else None
+    )
     try:
+        if current_key is not None:
+            await ensure_lesson_unchanged(page, catalog, current_key)
         await run_on(page, "video", "(el) => { el.currentTime = 0; }", "重置播放进度")
     except TargetClosedError:
         return paused_time, False, False
@@ -329,6 +354,8 @@ async def review_lesson(
 
     while True:
         try:
+            if current_key is not None:
+                await ensure_lesson_unchanged(page, catalog, current_key)
             if await has_visible_verification(page):
                 wait_start = time.time()
                 await wait_until_verification_hidden(page)
@@ -356,9 +383,10 @@ async def review_lesson(
                     暂停=f"{paused_time:.1f}s",
                 )
                 return paused_time, True, False
-            if isinstance(current_time, (int, float)) and current_time > last_video_time + 0.25:
+            if is_valid_video_time(current_time):
+                if abs(current_time - last_video_time) > 0.25:
+                    last_activity = time.monotonic()
                 last_video_time = current_time
-                last_activity = time.monotonic()
             logger.event(
                 "复习状态",
                 interval=60,
@@ -371,7 +399,7 @@ async def review_lesson(
                 总时长=f"{total_time:.0f}s",
             )
             if time.monotonic() - last_activity >= STALL_TIMEOUT_SECONDS:
-                logger.warn("视频连续 120 秒未推进,停止当前课时.", shift=True)
+                logger.warn("视频连续 120 秒未推进,保留页面等待恢复或手动切课.", shift=True)
                 logger.event(
                     "视频停滞",
                     模块="复习",
@@ -382,7 +410,7 @@ async def review_lesson(
                     ),
                     未推进秒=STALL_TIMEOUT_SECONDS,
                 )
-                return paused_time, False, False
+                last_activity = time.monotonic()
             if 0 < config.limitMaxTime <= elapsed_minutes(
                 start_time, paused_before + paused_time
             ):
@@ -393,6 +421,9 @@ async def review_lesson(
                 limit_time=config.limitMaxTime,
             )
             await asyncio.sleep(0.5)
+        except LessonChanged as exc:
+            exc.paused_time = paused_time
+            raise
         except TargetClosedError:
             return paused_time, False, False
         except TimeoutError as exc:
