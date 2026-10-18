@@ -38,6 +38,7 @@
 - **自动检测暂停并自动续播**
 - **支持智慧共享课、翻转课、融合共享课**
 - **支持刷习惯分**
+- **支持大模型自动作答弹题 (可选, 需配置 DeepSeek API, 见第六节)**
 - **支持隐藏窗口后台刷课**
 - 启动时自动检查更新
 - 后台实时更新学习进度
@@ -151,6 +152,30 @@ cp config.macos.ini.example config.macos.ini
 10. 不想再弹赞赏码?
 
     - 感谢您对本项目的支持~ 只需要设置 `showDonateCode = False` 就好了!
+
+------
+#### 六、弹题大模型作答 (可选功能)
+
+程序支持接入 **DeepSeek API** 对课中弹题进行大模型作答, 覆盖三类弹题:
+
+- 旧版共享课弹题 (原逻辑为随机选择, 配置后改为大模型作答);
+- 新版共享课弹页 (studywisdomh5, 大模型尽力作答, 失败仍回退手动);
+- 融合共享课 AI 随堂练习弹窗 (原逻辑为选第一个选项, 配置后改为大模型作答).
+
+**API 填写位置**: 项目目录下的 `data/llm.json` (首次可复制 `data/llm.json.example`):
+
+```json
+{
+  "api_key": "在这里填入你的 DeepSeek API Key",
+  "api_base": "https://api.deepseek.com",
+  "model": "deepseek-chat"
+}
+```
+
+- `api_key`: 在 [DeepSeek 开放平台](https://platform.deepseek.com) 申请, **留空则完全保持原有行为**, 不会报错;
+- `api_base` / `model`: 兼容 OpenAI 接口格式, 可自行替换为其他兼容服务;
+- API Key 仅保存在本地 `data/llm.json`, 不会上传到任何服务器;
+- 大模型作答失败或答案无法匹配选项时, 自动回退到原有默认行为, 不会中断刷课流程.
 
 ------
 #### 已知问题

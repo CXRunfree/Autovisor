@@ -4,6 +4,7 @@ import time
 from playwright.async_api import TimeoutError
 from playwright.async_api import Page
 from modules.configs import Config
+from modules.llm import answer_with_llm
 from modules.utils import get_video_attr, display_window, hide_window, run_on
 from playwright._impl._errors import TargetClosedError
 from modules.logger import Logger
@@ -236,8 +237,18 @@ async def skip_questions(page: Page, event_loop) -> None:
                 await asyncio.sleep(2)
                 if not await has_visible_element(page, (".topic-title",)):
                     continue
-                logger.warn("检测到新版课中弹题,请在浏览器中手动处理.", shift=True)
-                logger.event("新版课中弹题", 处理方式="手动", 地址=page.url)
+                # 大模型尽力作答新版弹题, 失败仍回退手动
+                try:
+                    choices = await page.query_selector_all(".topic-item")
+                    if len(choices) < 2:
+                        choices = await page.query_selector_all(
+                            "[class*=option], [class*=answer], .el-radio, .el-checkbox"
+                        )
+                    await answer_with_llm(page, None, choices)
+                except Exception as exc:
+                    logger.debug(f"新版弹题大模型作答未命中: {logger.summarize_exception(exc)}")
+                logger.warn("检测到新版课中弹题, 若未自动作答请在浏览器中手动处理.", shift=True)
+                logger.event("新版课中弹题", 处理方式="大模型+手动兜底", 地址=page.url)
                 while await has_visible_element(page, (".topic-title",)):
                     await asyncio.sleep(0.5)
                 event_loop.set()
@@ -255,9 +266,11 @@ async def skip_questions(page: Page, event_loop) -> None:
                     await ques.click(timeout=500)
                     if not await page.query_selector(".answer"):
                         choices = await page.query_selector_all(".topic-item")
-                        for each in choices[:2]:
-                            await each.click(timeout=500)
-                            await page.wait_for_timeout(100)
+                        # 大模型作答, 失败回退原默认行为(点前两个选项)
+                        if not await answer_with_llm(page, ques, choices):
+                            for each in choices[:2]:
+                                await each.click(timeout=500)
+                                await page.wait_for_timeout(100)
                         answered += 1
                 logger.event("课中答题", 题目数=len(total_ques), 已作答=answered)
             await page.press(".el-dialog", "Escape", timeout=1000)
