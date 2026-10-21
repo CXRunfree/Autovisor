@@ -16,6 +16,8 @@ class CatalogSelectors:
     progress: str | None = None
     progress_attribute: str | None = None
     course_title: str | None = None
+    needs_expand: bool = False
+    handles_ai_exercise: bool = False
 
 
 WISDOM_CATALOG = CatalogSelectors(
@@ -45,6 +47,31 @@ FUSION_CATALOG = CatalogSelectors(
     # 补上后 lesson_progress 能读到中间值, 支撑"播完未到100->回退重播"上报。
     progress=".el-progress",
     progress_attribute="aria-valuenow",
+    needs_expand=True,
+    handles_ai_exercise=True,
+)
+
+MOOC_CATALOG = CatalogSelectors(
+    name="wisdom-mooc",
+    # 叶子课时才计入目录: 有 videoSmallLessons 的 .chapter-item 只是分组,
+    # 真正可播的是内部 .chapter-content-second; 无子课时的 .chapter-item 本身就是课时。
+    # .test-box 是章节测试入口, 不是视频课时, 故意不纳入 item。
+    item=(
+        ".course-catalog .chapter-item:not(:has(.chapter-content-second)), "
+        ".course-catalog .chapter-content-second"
+    ),
+    active=(
+        ".course-catalog .chapter-item.current, "
+        ".course-catalog .chapter-content-second.current"
+    ),
+    finish=".finish-icon",
+    title=".item-name",
+    active_class="current",
+    progress=".progress-style, .el-progress",
+    progress_attribute="aria-valuenow",
+    course_title=".course-catalog .course-name, .course-name",
+    needs_expand=True,
+    handles_ai_exercise=True,
 )
 
 HIKE_CATALOG = CatalogSelectors(
@@ -69,7 +96,13 @@ LEGACY_CATALOG = CatalogSelectors(
     course_title=".source-name",
 )
 
-CATALOGS = (WISDOM_CATALOG, FUSION_CATALOG, HIKE_CATALOG, LEGACY_CATALOG)
+CATALOGS = (
+    WISDOM_CATALOG,
+    MOOC_CATALOG,
+    FUSION_CATALOG,
+    HIKE_CATALOG,
+    LEGACY_CATALOG,
+)
 
 
 def parse_progress_value(value) -> int:
@@ -91,6 +124,8 @@ def has_class(class_attr: str | None, class_name: str) -> bool:
 def catalog_candidates(course_url: str) -> tuple[CatalogSelectors, ...]:
     if "hike.zhihuishu.com" in course_url:
         return (HIKE_CATALOG,)
+    if "wisdom-mooc.zhihuishu.com" in course_url:
+        return (MOOC_CATALOG, FUSION_CATALOG)
     if "fusioncourseh5" in course_url:
         return (FUSION_CATALOG, WISDOM_CATALOG, LEGACY_CATALOG)
     return (WISDOM_CATALOG, LEGACY_CATALOG, FUSION_CATALOG)
@@ -105,7 +140,7 @@ async def detect_catalog(
         await page.wait_for_selector(selector, state="attached", timeout=timeout_ms)
     except TimeoutError as exc:
         raise RuntimeError(
-            f"课程目录加载超时, 未识别到新版/旧版/翻转课目录(尝试的选择器: {selector})"
+            f"课程目录加载超时, 未识别到新版/旧版/翻转课/AI慕课目录(尝试的选择器: {selector})"
         ) from exc
 
     for catalog in candidates:

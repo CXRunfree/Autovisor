@@ -20,7 +20,7 @@ def show_help():
     help_text = (
         "【必要配置说明】\n"
         "账号密码：可选项，如留空需手动登录\n"
-        "课程链接：从智慧树课程页面复制链接（以 studyvideoh5.zhihuishu.com 开头）\n"
+        "课程链接：从智慧树课程页面复制链接（studyvideoh5 / wisdom-mooc.zhihuishu.com 等）\n"
         "时长限制：程序运行的最大时间，0 表示不限\n"
         "倍速播放：最大 1.8（平台限制）\n\n"
         "【选填功能】\n"

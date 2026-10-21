@@ -7,6 +7,10 @@ import platform
 import sys
 import time
 
+from modules.stdio import configure_stdio
+
+configure_stdio()
+
 from playwright.async_api import BrowserContext, Page, Playwright, TimeoutError, async_playwright
 from playwright._impl._errors import TargetClosedError
 
@@ -58,6 +62,7 @@ ZHS_COOKIE_URLS = [
     "https://studyvideoh5.zhihuishu.com",
     "https://studywisdomh5.zhihuishu.com",
     "https://fusioncourseh5.zhihuishu.com",
+    "https://wisdom-mooc.zhihuishu.com",
     "https://hike.zhihuishu.com",
 ]
 

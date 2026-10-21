@@ -18,6 +18,7 @@ from modules.tasks import (
 from modules.utils import get_video_attr, run_on
 from modules.fusion_adapter import FusionAdapter
 from modules.video_state import (
+    COURSE_VIDEO_SELECTOR,
     has_valid_duration,
     tail_retry_time,
     time_for_percent,
@@ -114,8 +115,10 @@ async def learn_lesson(
                 last_activity = time.monotonic()
                 continue
 
-            # 融合共享课: AI 随堂练习弹窗自动选作答+提交(官方 learn_lesson 未处理)。
-            if catalog.name == "fusion" and await FusionAdapter.skip_ai_exercise(page):
+            # 融合共享课 / AI 慕课: 随堂练习弹窗或课中练习面板自动选作答+提交。
+            if catalog.handles_ai_exercise and await FusionAdapter.skip_blocking_quizzes(
+                page
+            ):
                 retry_count = 0
                 last_activity = time.monotonic()
                 continue
@@ -196,13 +199,13 @@ async def learn_lesson(
                         目标=f"{expected_time:.0f}s",
                     )
                     await page.evaluate(
-                        """time => {
-                            const video = document.querySelector('video');
+                        """([selector, time]) => {
+                            const video = document.querySelector(selector);
                             if (!video) return;
                             video.currentTime = time;
                             video.play();
                         }""",
-                        expected_time,
+                        [COURSE_VIDEO_SELECTOR, expected_time],
                     )
                     current_time = expected_time
                     last_video_time = expected_time
@@ -270,13 +273,13 @@ async def learn_lesson(
                         第几次=retry_count + 1,
                     )
                     await page.evaluate(
-                        """time => {
-                            const video = document.querySelector('video');
+                        """([selector, time]) => {
+                            const video = document.querySelector(selector);
                             if (!video) return;
                             video.currentTime = time;
                             video.play();
                         }""",
-                        retry_time,
+                        [COURSE_VIDEO_SELECTOR, retry_time],
                     )
                     retry_count += 1
                     last_video_time = retry_time
@@ -321,7 +324,12 @@ async def review_lesson(
         return paused_time, False, False
     logger.event("视频元数据", 时长=f"{total_time:.1f}s", 暂停=f"{paused_time:.1f}s")
     try:
-        await run_on(page, "video", "(el) => { el.currentTime = 0; }", "重置播放进度")
+        await run_on(
+            page,
+            COURSE_VIDEO_SELECTOR,
+            "(el) => { el.currentTime = 0; }",
+            "重置播放进度",
+        )
     except TargetClosedError:
         return paused_time, False, False
     last_video_time = -1.0
@@ -344,6 +352,9 @@ async def review_lesson(
                 waited = await _wait_for_topic_hidden(page)
                 paused_time += waited
                 logger.event("课中弹题等待", 模块="复习进度", 耗时=f"{waited:.1f}s")
+                last_activity = time.monotonic()
+                continue
+            if await FusionAdapter.skip_blocking_quizzes(page):
                 last_activity = time.monotonic()
                 continue
 

@@ -14,6 +14,7 @@ from modules.lesson_navigation import (
 )
 from modules.tasks import has_visible_verification
 from modules.utils import load_cookies
+from modules.video_state import COURSE_VIDEO_SELECTOR
 
 
 async def check_browser(config, logger, cookie_path: str) -> int:
@@ -96,7 +97,7 @@ async def check_course(course_url: str, config, logger, cookie_path: str) -> int
                 )
                 raise
             selectors = {entry.name: entry.item for entry in CATALOGS}
-            selectors["video"] = "video"
+            selectors["video"] = COURSE_VIDEO_SELECTOR
             counts = {
                 name: await page.locator(selector).count()
                 for name, selector in selectors.items()
@@ -114,7 +115,7 @@ async def check_course(course_url: str, config, logger, cookie_path: str) -> int
                 active_progress = None
             body_text = await page.locator("body").inner_text(timeout=3000)
             verification_visible = await has_visible_verification(page)
-            video_paused = await page.locator("video").evaluate_all(
+            video_paused = await page.locator(COURSE_VIDEO_SELECTOR).evaluate_all(
                 "videos => videos.map(video => video.paused)"
             )
             frame_urls = [frame.url for frame in page.frames]

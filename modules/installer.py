@@ -66,9 +66,11 @@ def is_compatible_wheel(filename, package, version, python_tag, abi_tag, platfor
     if not tags:
         return False
     wheel_version, wheel_python, wheel_abi, wheel_platform = tags
-    requested_version = normalize_version(package, version) if version else None
-    actual_version = normalize_version(package, wheel_version)
-    if (requested_version and actual_version != requested_version) or wheel_platform != platform_tag:
+    # 必须用文件名里的完整版本号匹配: opencv 的 4.10.0.82 / 4.10.0.84
+    # 前三段相同, 但前者按 numpy 1.x ABI 编译, Python 3.13 只能用 .84。
+    if version and wheel_version != version:
+        return False
+    if wheel_platform != platform_tag:
         return False
     # 精确匹配 python/abi 标签: 子串匹配会把 cp313t(自由线程) 误当成 cp313。
     python_ok = wheel_python == python_tag or "py3" in wheel_python

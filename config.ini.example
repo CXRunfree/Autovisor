@@ -26,7 +26,7 @@ limitSpeed = 1.0
 soundOff = True
 
 [course-url]
-;配置要学习的课程链接,支持(智慧)共享课
+;配置要学习的课程链接,支持智慧共享课、翻转课、融合共享课、AI慕课(wisdom-mooc)
 ;可继续添加多个课程链接
 URL1 =
 URL2 =
