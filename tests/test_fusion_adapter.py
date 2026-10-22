@@ -23,6 +23,13 @@ class FusionAdapterTests(unittest.TestCase):
         self.assertTrue(hasattr(FusionAdapter, "skip_blocking_quizzes"))
         self.assertTrue(hasattr(FusionAdapter, "skip_question_panel"))
 
+    def test_select_script_answers_each_question_item(self):
+        self.assertIn(".ques-list .item", fusion_adapter._SELECT_EACH_QUESTION_JS)
+        self.assertIn(".class-question-select.isSelect", fusion_adapter._SELECT_EACH_QUESTION_JS)
+
+    def test_skip_docstring_mentions_multi_question(self):
+        self.assertIn("每道题", FusionAdapter.skip_ai_exercise.__doc__)
+
 
 if __name__ == "__main__":
     unittest.main()

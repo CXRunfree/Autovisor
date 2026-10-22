@@ -40,6 +40,67 @@ _SUBMIT_SELECTOR = ", ".join(
 _CLOSE_SELECTOR = ".ai-class-exercise-dialog .header-icon"
 QUESTION_PANEL_SELECTOR = ".question-body"
 
+# 弹窗里常有多道题; 只点第一个 .option 会触发「暂未作答，请完成作答后再提交」。
+_SELECT_EACH_QUESTION_JS = """() => {
+    const dlg = [...document.querySelectorAll('.ai-class-exercise-dialog')].find(el => {
+        const s = getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden' || el.offsetWidth <= 0)
+            return false;
+        let p = el.parentElement;
+        while (p && p !== document.body) {
+            const ps = getComputedStyle(p);
+            if (ps.display === 'none' || ps.visibility === 'hidden') return false;
+            p = p.parentElement;
+        }
+        return true;
+    });
+    if (!dlg) return {ok: false, selected: 0, questions: 0};
+    const items = [...dlg.querySelectorAll('.ques-list .item')];
+    const roots = items.length ? items : [dlg];
+    let selected = 0;
+    for (const root of roots) {
+        if (root.querySelector('.class-question-select.isSelect')) continue;
+        const opt = root.querySelector('.option');
+        if (opt) { opt.click(); selected++; }
+    }
+    return {ok: true, selected, questions: roots.length};
+}"""
+_HAS_FINISH_JS = """() => {
+    const dlg = [...document.querySelectorAll('.ai-class-exercise-dialog')].find(el => {
+        const s = getComputedStyle(el);
+        return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetWidth > 0;
+    });
+    return Boolean(dlg && dlg.querySelector('.btn.is-finish'));
+}"""
+_CLICK_SUBMIT_IN_DIALOG_JS = """() => {
+    const dlg = [...document.querySelectorAll('.ai-class-exercise-dialog')].find(el => {
+        const s = getComputedStyle(el);
+        return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetWidth > 0;
+    });
+    if (!dlg) return false;
+    const sels = [
+        '.dialog-footer .btn:not(.is-finish)',
+        '.el-dialog__footer button.el-button',
+        '.dialog-footer .btn',
+    ];
+    for (const sel of sels) {
+        const el = dlg.querySelector(sel);
+        if (el) { el.click(); return true; }
+    }
+    return false;
+}"""
+_CLICK_CLOSE_IN_DIALOG_JS = """() => {
+    const dlg = [...document.querySelectorAll('.ai-class-exercise-dialog')].find(el => {
+        const s = getComputedStyle(el);
+        return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetWidth > 0;
+    });
+    if (!dlg) return false;
+    const el = dlg.querySelector('.header-icon');
+    if (!el) return false;
+    el.click();
+    return true;
+}"""
+
 
 def _visible_script(selector: str) -> str:
     return f"""() => {{
@@ -135,23 +196,51 @@ class FusionAdapter:
     async def skip_ai_exercise(page: Page) -> bool:
         """检测 AI 随堂弹窗并自动选选项+提交, 成功(或已处理)返回 True。
 
-        顺序: 选第一个选项 -> 点提交 -> 点关闭图标 -> 恢复播放。
+        顺序: 每道题选一个选项 -> 点提交 -> 等已完成/弹窗消失 -> 点关闭图标 -> 恢复播放。
+        未作答的题不能提交也不能关闭; 只点第一题会把播放循环卡死。
         """
         if not await FusionAdapter.ai_exercise_visible(page):
             return False
         logger.info("检测到 AI随堂练习弹窗, 自动选择并提交.")
         try:
-            clicked = bool(await page.evaluate(_click_script(_OPTION_SELECTOR)))
-            if not clicked:
+            if await page.evaluate(_HAS_FINISH_JS):
+                await page.evaluate(_CLICK_CLOSE_IN_DIALOG_JS)
+                await page.wait_for_timeout(400)
+                if not await FusionAdapter.ai_exercise_visible(page):
+                    logger.info("AI 随堂练习已自动提交关闭.")
+                    await FusionAdapter.resume_video(page)
+                    return True
+
+            result = await page.evaluate(_SELECT_EACH_QUESTION_JS) or {}
+            selected = int(result.get("selected") or 0)
+            questions = int(result.get("questions") or 0)
+            if questions:
+                logger.info(f"AI随堂已选择 {selected}/{questions} 题.")
+            elif not selected:
                 logger.debug_throttled("fusion:ai_opt", "未找到选项按钮")
-            await page.wait_for_timeout(600)
-            submitted = bool(await page.evaluate(_click_script(_SUBMIT_SELECTOR)))
-            await page.wait_for_timeout(800)
-            closed = bool(await page.evaluate(_click_script(_CLOSE_SELECTOR)))
-            await page.wait_for_timeout(400)
-            logger.info("AI 随堂练习已自动提交关闭.")
-            await FusionAdapter.resume_video(page)
-            return bool(clicked or submitted or closed)
+            await page.wait_for_timeout(500)
+            await page.evaluate(_CLICK_SUBMIT_IN_DIALOG_JS)
+
+            closed = False
+            for _ in range(12):
+                await page.wait_for_timeout(400)
+                if not await FusionAdapter.ai_exercise_visible(page):
+                    closed = True
+                    break
+                if await page.evaluate(_HAS_FINISH_JS):
+                    await page.evaluate(_CLICK_CLOSE_IN_DIALOG_JS)
+            if not closed and await FusionAdapter.ai_exercise_visible(page):
+                await page.evaluate(_CLICK_CLOSE_IN_DIALOG_JS)
+                await page.wait_for_timeout(400)
+                closed = not await FusionAdapter.ai_exercise_visible(page)
+
+            if closed:
+                logger.info("AI 随堂练习已自动提交关闭.")
+                await FusionAdapter.resume_video(page)
+                return True
+            logger.warn("AI 随堂练习仍未关闭,稍后重试.")
+            await page.wait_for_timeout(1500)
+            return True
         except TargetClosedError:
             logger.debug("fusion:ai 浏览器已关闭.")
             return False
