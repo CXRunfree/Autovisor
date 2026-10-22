@@ -10,7 +10,7 @@ driver = Edge
 EXE_PATH =
 
 [script-option]
-;是否自动过登录时的滑块验证(默认:True)
+;是否自动过验证码(登录滑块 / 课中点选, 默认:True)
 enableAutoCaptcha = True
 ;是否自动隐藏浏览器窗口(默认:False)
 enableHideWindow = False

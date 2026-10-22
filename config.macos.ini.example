@@ -12,7 +12,7 @@ attachExistingChrome = False
 cdpUrl = http://127.0.0.1:9222
 
 [script-option]
-;自动滑块只支持登录页，课中安全验证仍需手动完成
+;是否自动过验证码(登录滑块 / 课中点选)
 enableAutoCaptcha = False
 enableHideWindow = False
 showDonateCode = False

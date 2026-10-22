@@ -262,7 +262,9 @@ async def main(config) -> bool:
             tasks.extend(
                 [
                     asyncio.create_task(
-                        wait_for_verify(page, config, event_loop_verify)
+                        wait_for_verify(
+                            page, config, event_loop_verify, modules
+                        )
                     ),
                     asyncio.create_task(video_optimize(page, config)),
                     asyncio.create_task(skip_questions(page, event_loop_answer)),

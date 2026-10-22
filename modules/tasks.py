@@ -7,7 +7,9 @@ from modules.configs import Config
 from modules.utils import get_video_attr, display_window, hide_window, run_on
 from playwright._impl._errors import TargetClosedError
 from modules.logger import Logger
+from modules.click_captcha import solve_click_captcha
 from modules.fusion_adapter import FusionAdapter
+from modules.slider import IN_COURSE_APPEAR_TIMEOUT_MS, slider_verify
 from modules.video_state import COURSE_VIDEO_SELECTOR, video_at_end
 
 logger = Logger()
@@ -16,6 +18,8 @@ VERIFICATION_SELECTORS = (
     ".yidun_popup .yidun_modal",
     ".yidun_modal__title",
     "[id^='tcaptcha_transform']",
+    "#tcaptcha_iframe_dy",
+    "iframe[id^='tcaptcha']",
 )
 
 BLOCKING_OVERLAY_SELECTORS = (
@@ -318,7 +322,7 @@ async def skip_questions(page: Page, event_loop) -> None:
             continue
 
 
-async def wait_for_verify(page: Page, config, event_loop) -> None:
+async def wait_for_verify(page: Page, config, event_loop, captcha_modules=None) -> None:
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
@@ -326,9 +330,32 @@ async def wait_for_verify(page: Page, config, event_loop) -> None:
             if not await has_visible_verification(page):
                 continue
             event_loop.clear()
+            wait_start = time.time()
+            auto_ok = False
+            if config.enableAutoCaptcha and captcha_modules:
+                logger.info("检测到安全验证,正在尝试自动识别...", shift=True)
+                logger.event("安全验证", 状态="自动", 地址=page.url)
+                auto_ok = bool(await solve_click_captcha(page, captcha_modules))
+                if not auto_ok:
+                    auto_ok = bool(
+                        await slider_verify(
+                            page,
+                            captcha_modules,
+                            appear_timeout_ms=IN_COURSE_APPEAR_TIMEOUT_MS,
+                        )
+                    )
+            if auto_ok and not await has_visible_verification(page):
+                event_loop.set()
+                logger.info("安全验证已自动完成.", shift=True)
+                logger.event(
+                    "安全验证",
+                    状态="自动完成",
+                    耗时=f"{time.time() - wait_start:.1f}s",
+                )
+                await asyncio.sleep(2)
+                continue
             logger.warn("检测到安全验证,请手动完成验证...", shift=True)
             logger.event("安全验证", 状态="开始", 地址=page.url)
-            wait_start = time.time()
             if config.enableHideWindow:
                 await display_window(page)
             await wait_until_verification_hidden(page)
