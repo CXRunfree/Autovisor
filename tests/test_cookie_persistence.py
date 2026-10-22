@@ -79,6 +79,11 @@ class CookiePersistenceTests(unittest.IsolatedAsyncioTestCase):
         await Autovisor.persist_login_cookies(_Context([_cookie("a")]))
         self.assertEqual(self.logger.exceptions, ["保存登录 Cookies 失败."])
 
+    def test_cookie_urls_include_wisdom_mooc(self):
+        self.assertTrue(
+            any("wisdom-mooc.zhihuishu.com" in url for url in Autovisor.ZHS_COOKIE_URLS)
+        )
+
     async def test_retries_after_save_failure(self):
         self.save_cookies.side_effect = [OSError("disk full"), None]
         context = _Context([_cookie("a")])

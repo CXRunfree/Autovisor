@@ -5,6 +5,7 @@ from playwright._impl._errors import TargetClosedError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from modules import utils
+from modules.video_state import COURSE_VIDEO_SELECTOR
 
 
 class _Logger:
@@ -105,6 +106,8 @@ class GetVideoAttrTests(LoggerPatchMixin, unittest.IsolatedAsyncioTestCase):
         page = _Page(result=72.5)
         self.assertEqual(await utils.get_video_attr(page, "duration"), 72.5)
         self.assertIn("['duration']", page.scripts[0])
+        self.assertEqual(page.wait_timeouts[0][0], COURSE_VIDEO_SELECTOR)
+        self.assertIn(repr(COURSE_VIDEO_SELECTOR), page.scripts[0])
 
     async def test_missing_video_after_wait_returns_none(self):
         page = _Page(result=utils._MISSING)

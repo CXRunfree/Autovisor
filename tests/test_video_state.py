@@ -2,6 +2,7 @@ import math
 import unittest
 
 from modules.video_state import (
+    COURSE_VIDEO_SELECTOR,
     has_valid_duration,
     tail_retry_time,
     time_for_percent,
@@ -27,6 +28,11 @@ class VideoStateTests(unittest.TestCase):
     def test_tail_retry_never_goes_negative(self):
         self.assertEqual(tail_retry_time(60), 55)
         self.assertEqual(tail_retry_time(3), 0)
+
+    def test_course_video_selector_skips_digital_human(self):
+        self.assertIn("virtual-human-video", COURSE_VIDEO_SELECTOR)
+        self.assertIn("home-human", COURSE_VIDEO_SELECTOR)
+        self.assertTrue(COURSE_VIDEO_SELECTOR.startswith("video"))
 
 
 if __name__ == "__main__":

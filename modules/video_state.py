@@ -1,5 +1,9 @@
 import math
 
+# wisdom-mooc 左侧数字人是循环 muted <video class="virtual-human-video home-human">,
+# 必须排除, 否则会读到/控制数字人而不是课程视频。
+COURSE_VIDEO_SELECTOR = "video:not(.virtual-human-video):not(.home-human)"
+
 
 def is_valid_video_time(value) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(value) and value >= 0

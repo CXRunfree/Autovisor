@@ -14,6 +14,7 @@ from modules.lesson_navigation import (
 )
 import time
 from modules.logger import Logger
+from modules.video_state import COURSE_VIDEO_SELECTOR
 
 if sys.platform == "win32":
     import ctypes
@@ -263,7 +264,9 @@ async def optimize_page(
 
 async def get_video_attr(page, attr: str) -> any:
     try:
-        await page.wait_for_selector("video", state="attached", timeout=1000)
+        await page.wait_for_selector(
+            COURSE_VIDEO_SELECTOR, state="attached", timeout=1000
+        )
     except TimeoutError:
         # 视频元素尚未挂载属于轮询常态, 不能每次打印完整堆栈
         logger.debug_throttled(
@@ -274,7 +277,12 @@ async def get_video_attr(page, attr: str) -> any:
     except TargetClosedError as e:
         logger.debug(f"浏览器关闭时停止读取视频属性 {attr}: {logger.summarize_exception(e)}")
         return None
-    return await run_on(page, "video", f"(el) => el[{attr!r}]", f"读取视频属性 {attr}")
+    return await run_on(
+        page,
+        COURSE_VIDEO_SELECTOR,
+        f"(el) => el[{attr!r}]",
+        f"读取视频属性 {attr}",
+    )
 
 
 # 元素不存在时由页面脚本返回的哨兵值

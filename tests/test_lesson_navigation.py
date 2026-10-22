@@ -3,6 +3,7 @@ import unittest
 from modules.lesson_navigation import (
     FUSION_CATALOG,
     HIKE_CATALOG,
+    MOOC_CATALOG,
     WISDOM_CATALOG,
     catalog_candidates,
     has_class,
@@ -26,6 +27,29 @@ class LessonNavigationTests(unittest.TestCase):
             catalog_candidates("https://hike.zhihuishu.com/x"),
             (HIKE_CATALOG,),
         )
+        self.assertIs(
+            catalog_candidates(
+                "https://wisdom-mooc.zhihuishu.com/study/index?recruitAndCourseId=4e5a"
+            )[0],
+            MOOC_CATALOG,
+        )
+        self.assertIs(
+            catalog_candidates("https://studyvideoh5.zhihuishu.com/x")[0],
+            WISDOM_CATALOG,
+        )
+
+    def test_wisdom_mooc_catalog_uses_leaf_lessons_and_skips_tests(self):
+        self.assertEqual(MOOC_CATALOG.name, "wisdom-mooc")
+        self.assertIn(".course-catalog .chapter-item", MOOC_CATALOG.item)
+        self.assertIn(":not(:has(.chapter-content-second))", MOOC_CATALOG.item)
+        self.assertIn(".chapter-content-second", MOOC_CATALOG.item)
+        self.assertNotIn("test-box", MOOC_CATALOG.item)
+        self.assertEqual(MOOC_CATALOG.finish, ".finish-icon")
+        self.assertEqual(MOOC_CATALOG.active_class, "current")
+        self.assertTrue(MOOC_CATALOG.needs_expand)
+        self.assertTrue(MOOC_CATALOG.handles_ai_exercise)
+        self.assertTrue(FUSION_CATALOG.needs_expand)
+        self.assertFalse(WISDOM_CATALOG.handles_ai_exercise)
 
     def test_progress_parser_clamps_and_rejects_non_finite_values(self):
         cases = {

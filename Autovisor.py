@@ -7,6 +7,10 @@ import platform
 import sys
 import time
 
+from modules.stdio import configure_stdio
+
+configure_stdio()
+
 from playwright.async_api import BrowserContext, Page, Playwright, TimeoutError, async_playwright
 from playwright._impl._errors import TargetClosedError
 
@@ -58,6 +62,7 @@ ZHS_COOKIE_URLS = [
     "https://studyvideoh5.zhihuishu.com",
     "https://studywisdomh5.zhihuishu.com",
     "https://fusioncourseh5.zhihuishu.com",
+    "https://wisdom-mooc.zhihuishu.com",
     "https://hike.zhihuishu.com",
 ]
 
@@ -257,7 +262,9 @@ async def main(config) -> bool:
             tasks.extend(
                 [
                     asyncio.create_task(
-                        wait_for_verify(page, config, event_loop_verify)
+                        wait_for_verify(
+                            page, config, event_loop_verify, modules
+                        )
                     ),
                     asyncio.create_task(video_optimize(page, config)),
                     asyncio.create_task(skip_questions(page, event_loop_answer)),

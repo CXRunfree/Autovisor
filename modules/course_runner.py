@@ -12,6 +12,7 @@ from modules.lesson_navigation import (
 )
 from modules.tasks import has_visible_verification, wait_until_verification_hidden
 from modules.utils import get_filtered_class, get_lesson_name
+from modules.video_state import COURSE_VIDEO_SELECTOR
 from modules.fusion_adapter import FusionAdapter
 
 # 课时项(<li>)的点击发生在 set_default_timeout(10000) 之前, 不显式限时就会沿用
@@ -57,8 +58,8 @@ async def run_course(
     await page.wait_for_selector(
         catalog.item, state="attached", timeout=CATALOG_ATTACH_TIMEOUT_MS
     )
-    # 融合共享课: 默认折叠的目录需先展开, 否则 get_filtered_class 采不全课时。
-    if catalog.name == "fusion":
+    # 融合共享课 / AI 慕课: 默认折叠的目录需先展开, 否则 get_filtered_class 采不全课时。
+    if catalog.needs_expand:
         await FusionAdapter.expand_catalog(page)
         await page.wait_for_timeout(400)
     to_learn = await get_filtered_class(page, catalog)
@@ -114,7 +115,7 @@ async def run_course(
         )
         lesson_start = time.time()
         page.set_default_timeout(10000)
-        await page.wait_for_selector("video", state="attached")
+        await page.wait_for_selector(COURSE_VIDEO_SELECTOR, state="attached")
         playback_enabled.set()
 
         if learning:

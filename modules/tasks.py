@@ -7,7 +7,10 @@ from modules.configs import Config
 from modules.utils import get_video_attr, display_window, hide_window, run_on
 from playwright._impl._errors import TargetClosedError
 from modules.logger import Logger
-from modules.video_state import video_at_end
+from modules.click_captcha import solve_click_captcha
+from modules.fusion_adapter import FusionAdapter
+from modules.slider import IN_COURSE_APPEAR_TIMEOUT_MS, slider_verify
+from modules.video_state import COURSE_VIDEO_SELECTOR, video_at_end
 
 logger = Logger()
 
@@ -15,12 +18,17 @@ VERIFICATION_SELECTORS = (
     ".yidun_popup .yidun_modal",
     ".yidun_modal__title",
     "[id^='tcaptcha_transform']",
+    "#tcaptcha_iframe_dy",
+    "iframe[id^='tcaptcha']",
 )
 
 BLOCKING_OVERLAY_SELECTORS = (
     ".topic-title",
     ".ss2077-custom-dialog",
+    ".ai-class-exercise-dialog",
+    ".question-body",
 )
+PLAY_READY_SELECTOR = ".videoArea, .video-play"
 
 
 async def has_visible_element(page: Page, selectors: tuple[str, ...]) -> bool:
@@ -102,18 +110,25 @@ async def video_optimize(page: Page, config: Config) -> None:
         try:
             await asyncio.sleep(2)
             try:
-                await page.wait_for_selector("video", state="attached", timeout=3000)
+                await page.wait_for_selector(
+                    COURSE_VIDEO_SELECTOR, state="attached", timeout=3000
+                )
             except TimeoutError:
                 logger.debug_throttled(
                     "video:optimize",
-                    "视频调节跳过: 页面未找到元素 video",
+                    f"视频调节跳过: 页面未找到元素 {COURSE_VIDEO_SELECTOR}",
                 )
                 continue
             volume = await get_video_attr(page, "volume")
             rate = await get_video_attr(page, "playbackRate")
             changes = []
             if config.soundOff and volume != 0:
-                await run_on(page, "video", "(el) => { el.volume = 0; }", "设置静音")
+                await run_on(
+                    page,
+                    COURSE_VIDEO_SELECTOR,
+                    "(el) => { el.volume = 0; }",
+                    "设置静音",
+                )
                 await run_on(
                     page,
                     ".volumeBox",
@@ -124,7 +139,7 @@ async def video_optimize(page: Page, config: Config) -> None:
             if rate != config.limitSpeed:
                 await run_on(
                     page,
-                    "video",
+                    COURSE_VIDEO_SELECTOR,
                     f"(el) => {{ el.playbackRate = {config.limitSpeed}; }}",
                     "设置倍速",
                 )
@@ -159,23 +174,30 @@ async def play_video(
         try:
             await asyncio.sleep(2)
             try:
-                await page.wait_for_selector("video", state="attached", timeout=1000)
+                await page.wait_for_selector(
+                    COURSE_VIDEO_SELECTOR, state="attached", timeout=1000
+                )
             except TimeoutError:
                 logger.debug_throttled(
                     "video:play",
-                    "视频播放跳过: 页面未找到元素 video",
+                    f"视频播放跳过: 页面未找到元素 {COURSE_VIDEO_SELECTOR}",
                 )
                 continue
             if playback_enabled is not None and not playback_enabled.is_set():
                 paused = await run_on(
-                    page, "video", "(el) => el.paused", "读取视频暂停状态"
+                    page,
+                    COURSE_VIDEO_SELECTOR,
+                    "(el) => el.paused",
+                    "读取视频暂停状态",
                 )
                 if paused is False:
-                    await run_on(page, "video", "(el) => el.pause()", "暂停视频")
+                    await run_on(
+                        page, COURSE_VIDEO_SELECTOR, "(el) => el.pause()", "暂停视频"
+                    )
                 continue
             state = await run_on(
                 page,
-                "video",
+                COURSE_VIDEO_SELECTOR,
                 """(el) => ({
                     paused: el.paused,
                     ended: el.ended,
@@ -190,7 +212,12 @@ async def play_video(
             blocked = await has_blocking_overlay(page)
             if blocked:
                 if not paused:
-                    await run_on(page, "video", "(el) => el.pause()", "遮罩层暂停视频")
+                    await run_on(
+                        page,
+                        COURSE_VIDEO_SELECTOR,
+                        "(el) => el.pause()",
+                        "遮罩层暂停视频",
+                    )
                     logger.info("检测到遮罩层,已暂停视频等待处理.")
                     logger.event("遮罩层暂停", 播放器时间=round(state["currentTime"], 1))
                 continue
@@ -200,14 +227,16 @@ async def play_video(
             if paused and not at_end:
                 logger.info("检测到视频暂停,正在尝试播放.")
                 try:
-                    await page.wait_for_selector(".videoArea", timeout=1000)
+                    await page.wait_for_selector(PLAY_READY_SELECTOR, timeout=1000)
                 except TimeoutError:
                     logger.debug_throttled(
                         "videoArea",
-                        "尝试播放跳过: 页面未找到元素 .videoArea",
+                        f"尝试播放跳过: 页面未找到元素 {PLAY_READY_SELECTOR}",
                     )
                     continue
-                await run_on(page, "video", "(el) => el.play()", "恢复播放")
+                await run_on(
+                    page, COURSE_VIDEO_SELECTOR, "(el) => el.play()", "恢复播放"
+                )
                 logger.debug("视频已恢复播放.")
                 logger.event(
                     "恢复播放",
@@ -241,6 +270,11 @@ async def skip_questions(page: Page, event_loop) -> None:
                 while await has_visible_element(page, (".topic-title",)):
                     await asyncio.sleep(0.5)
                 event_loop.set()
+                continue
+            if "wisdom-mooc.zhihuishu.com" in page.url:
+                await asyncio.sleep(2)
+                if await FusionAdapter.skip_blocking_quizzes(page):
+                    event_loop.set()
                 continue
             if "hike.zhihuishu.com" in page.url:
                 logger.warn("当前课程为新版本,不支持自动答题.", shift=True)
@@ -288,7 +322,7 @@ async def skip_questions(page: Page, event_loop) -> None:
             continue
 
 
-async def wait_for_verify(page: Page, config, event_loop) -> None:
+async def wait_for_verify(page: Page, config, event_loop, captcha_modules=None) -> None:
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
@@ -296,9 +330,32 @@ async def wait_for_verify(page: Page, config, event_loop) -> None:
             if not await has_visible_verification(page):
                 continue
             event_loop.clear()
+            wait_start = time.time()
+            auto_ok = False
+            if config.enableAutoCaptcha and captcha_modules:
+                logger.info("检测到安全验证,正在尝试自动识别...", shift=True)
+                logger.event("安全验证", 状态="自动", 地址=page.url)
+                auto_ok = bool(await solve_click_captcha(page, captcha_modules))
+                if not auto_ok:
+                    auto_ok = bool(
+                        await slider_verify(
+                            page,
+                            captcha_modules,
+                            appear_timeout_ms=IN_COURSE_APPEAR_TIMEOUT_MS,
+                        )
+                    )
+            if auto_ok and not await has_visible_verification(page):
+                event_loop.set()
+                logger.info("安全验证已自动完成.", shift=True)
+                logger.event(
+                    "安全验证",
+                    状态="自动完成",
+                    耗时=f"{time.time() - wait_start:.1f}s",
+                )
+                await asyncio.sleep(2)
+                continue
             logger.warn("检测到安全验证,请手动完成验证...", shift=True)
             logger.event("安全验证", 状态="开始", 地址=page.url)
-            wait_start = time.time()
             if config.enableHideWindow:
                 await display_window(page)
             await wait_until_verification_hidden(page)
