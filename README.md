@@ -41,7 +41,7 @@
 - **支持隐藏窗口后台刷课**
 - 启动时自动检查更新
 - 后台实时更新学习进度
-- macOS 支持源码运行
+- macOS / Linux 支持源码运行
 - 根据当前时间自动设置背景色(白天/夜晚)
 - 完成章节时提示已刷课时长
 - 各种自定义配置
@@ -56,7 +56,7 @@
 
    - 默认启动系统自带的 Edge 浏览器;
    - 文件里的 **EXE_PATH 项** 用于自定义浏览器路径, 需要精确到**浏览器可执行文件的位置**, 可以保持默认不填;
-   - 不知道浏览器的安装路径? 见下方 **五、常见问题**.
+   - 不知道浏览器的安装路径? 见下方 **六、常见问题**.
    - 确认 **保存修改** 后再退出.
 
    <p align="left"><img src="resources/markdown/config_detail.png" width="600" alt="config.ini 配置说明"></p>
@@ -93,14 +93,37 @@ cp config.macos.ini.example config.macos.ini
 
 首次运行会自动部署环境 (安装 `uv`、依赖和必要的浏览器), 之后直接启动. 环境或配置变化时会自动重新部署, 也可用 `./run_macos.sh --setup` 强制重建.
 
-#### 四、发行版下载
+#### 四、Linux 源码运行
+
+需要 Python 3.10–3.13、`uv` 和图形界面 (X11 / Wayland). 先复制模板并填写配置:
+
+```bash
+cp config.linux.ini.example config.linux.ini
+```
+
+打开 `config.linux.ini` 填入课程链接 (账号密码可留空, 用浏览器手动登录).
+
+首次运行需要安装环境和浏览器 (只需执行一次):
+
+```bash
+uv sync --extra captcha
+uv run playwright install chromium
+```
+
+之后每次启动程序:
+
+```bash
+uv run python -u Autovisor.py --config config.linux.ini
+```
+
+#### 五、发行版下载
 
 - Github: [Releases · CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor/releases)
 - 网盘备用: [蓝奏云 · Autovisor-for-windows](https://wwk.lanzouj.com/b05evsxif) 密码: 492l
 
 这是已经打包好的程序, 若需要**源代码**请于 Github 项目主页下载.
 
-#### 五、常见问题
+#### 六、常见问题
 
 1. 解压后没有 `Autovisor.exe` / 提示缺少依赖文件?
 

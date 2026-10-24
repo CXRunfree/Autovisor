@@ -1,0 +1,41 @@
+name: Linux Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install OpenCV runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y libgl1
+
+      - name: Install dependencies (incl. captcha extra)
+        run: uv sync --extra captcha
+
+      - name: Verify captcha dependencies
+        run: uv run --no-sync python -c "import cv2, numpy; print(cv2.__version__, numpy.__version__)"
+
+      - name: Unit tests
+        run: uv run --no-sync python -m unittest discover -s tests -v
