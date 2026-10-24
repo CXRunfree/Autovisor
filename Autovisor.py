@@ -2,17 +2,19 @@
 import argparse
 import asyncio
 import ctypes
+import getpass
 import os
 import platform
+import re
 import sys
 import time
 
 from playwright.async_api import BrowserContext, Page, Playwright, TimeoutError, async_playwright
 from playwright._impl._errors import TargetClosedError
 
-from modules import installer, updater
+from modules import installer, quiz_page, updater
 from modules.banner import print_banner
-from modules.configs import Config, ConfigError
+from modules.configs import Config, ConfigError, ensure_config_files
 from modules.course_runner import (
     CourseOutcome,
     detect_catalog_after_verification,
@@ -20,11 +22,9 @@ from modules.course_runner import (
 )
 from modules.diagnostics import check_browser, check_course
 from modules.login import (
-    LOGIN_PASSWORD_SELECTOR,
-    LOGIN_SUBMIT_SELECTOR,
-    LOGIN_USERNAME_SELECTOR,
-    accept_login_terms,
+    describe_login_error,
     is_login_page,
+    perform_password_login,
     wait_for_login_complete,
 )
 from modules.logger import Logger
@@ -39,6 +39,7 @@ from modules.tasks import (
 )
 from modules.utils import (
     clear_cookies,
+    filter_zhihuishu_cookies,
     get_runtime_path,
     hide_window,
     load_cookies,
@@ -51,15 +52,8 @@ from modules.version import __version__
 event_loop_verify = asyncio.Event()
 event_loop_answer = asyncio.Event()
 COOKIE_PATH = get_runtime_path("data", "cookies.json")
-ZHS_COOKIE_URLS = [
-    "https://www.zhihuishu.com",
-    "https://passport.zhihuishu.com",
-    "https://onlineweb.zhihuishu.com",
-    "https://studyvideoh5.zhihuishu.com",
-    "https://studywisdomh5.zhihuishu.com",
-    "https://fusioncourseh5.zhihuishu.com",
-    "https://hike.zhihuishu.com",
-]
+# 运行期间周期性落盘 Cookies 的间隔(秒): 服务器中途续期后, 崩溃/断电也不丢凭证
+COOKIE_SYNC_INTERVAL_SECONDS = 300
 
 
 _saved_cookies = None
@@ -88,7 +82,8 @@ def remember_login_cookies(cookies) -> None:
 async def persist_login_cookies(context: BrowserContext) -> None:
     """凭证有变化时才写盘: 登录完成、Cookie 续期后立即保存, 中断也不丢。"""
     global _saved_cookies
-    cookies = await context.cookies(ZHS_COOKIE_URLS)
+    # 按域名筛选而非固定 URL 列表, 新子域下发 cookies 也能收进来
+    cookies = filter_zhihuishu_cookies(await context.cookies())
     signature = _cookies_signature(cookies)
     if signature is None or signature == _saved_cookies:
         return
@@ -99,6 +94,18 @@ async def persist_login_cookies(context: BrowserContext) -> None:
         return
     _saved_cookies = signature
     logger.event("保存登录凭证", 条数=len(cookies), 文件=COOKIE_PATH)
+
+
+async def periodic_cookie_sync(context: BrowserContext) -> None:
+    """运行期间周期性落盘 Cookies, 与 persist_login_cookies 共用变更检测, 无变化时不写盘。"""
+    while True:
+        await asyncio.sleep(COOKIE_SYNC_INTERVAL_SECONDS)
+        try:
+            await persist_login_cookies(context)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.log_exception("周期保存登录 Cookies 失败.", exc)
 
 
 def get_screen_size():
@@ -156,6 +163,18 @@ async def init_page(p: Playwright, config, cookies) -> tuple[Page, BrowserContex
     return page, context
 
 
+async def report_login_error_later(page: Page) -> None:
+    """提交账号密码后若仍停留在登录页, 收集并输出页面错误提示。"""
+    await page.wait_for_timeout(6000)
+    if not is_login_page(page.url):
+        return
+    detail = await describe_login_error(page)
+    if detail:
+        logger.warn(f"登录未完成, 页面提示: {detail}", shift=True)
+    else:
+        logger.warn("登录未完成, 请检查账号密码是否正确, 或在浏览器中手动登录.", shift=True)
+
+
 async def auto_login(context: BrowserContext, page: Page, config, modules=None) -> None:
     wait_start = time.time()
     await page.goto(config.login_url, wait_until="commit")
@@ -163,27 +182,19 @@ async def auto_login(context: BrowserContext, page: Page, config, modules=None) 
         logger.info("检测到已登录,跳过登录步骤.")
         return
 
+    error_task = None
     if config.username and config.password:
         try:
-            username = await page.wait_for_selector(
-                LOGIN_USERNAME_SELECTOR, state="visible", timeout=30000
-            )
-            password = await page.wait_for_selector(
-                LOGIN_PASSWORD_SELECTOR, state="visible", timeout=30000
-            )
             logger.event("自动登录", 方式="账号密码", 账号="已填写")
-            await username.fill(config.username)
-            await password.fill(config.password)
-            await accept_login_terms(page)
-            submit = await page.wait_for_selector(
-                LOGIN_SUBMIT_SELECTOR, state="visible", timeout=30000
-            )
-            await page.wait_for_timeout(500)
-            await submit.click()
+            await perform_password_login(page, config.username, config.password)
+            error_task = asyncio.create_task(report_login_error_later(page))
         except TimeoutError:
             if is_login_page(page.url):
                 logger.warn("未找到自动登录控件,请在浏览器中手动完成登录.", shift=True)
                 logger.event("自动登录", 方式="手动", 原因="未找到登录控件")
+    else:
+        logger.info("配置文件未填写账号密码,请在浏览器中手动登录.", shift=True)
+        logger.event("自动登录", 方式="手动", 原因="未配置账号密码")
 
     captcha_task = None
     if config.enableAutoCaptcha and modules:
@@ -193,10 +204,12 @@ async def auto_login(context: BrowserContext, page: Page, config, modules=None) 
     try:
         await wait_for_login_complete(page)
     finally:
-        if captcha_task:
-            if not captcha_task.done():
-                captcha_task.cancel()
-            await asyncio.gather(captcha_task, return_exceptions=True)
+        for task in (error_task, captcha_task):
+            if task and not task.done():
+                task.cancel()
+        pending = [task for task in (error_task, captcha_task) if task]
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
 
     logger.event("登录完成", 耗时=f"{time.time() - wait_start:.1f}s", 地址=page.url)
     await persist_login_cookies(context)
@@ -232,6 +245,67 @@ async def ensure_login(
     return False
 
 
+def save_credentials_to_config(config_path: str, username: str, password: str) -> bool:
+    """把账号密码写回 config.ini, 只替换目标行, 保留文件中的其余内容和注释。"""
+    raw = None
+    used_encoding = "utf-8"
+    for encoding in ("utf-8-sig", "gbk"):
+        try:
+            with open(config_path, "r", encoding=encoding) as file:
+                raw = file.read()
+            # utf-8-sig 仅用于剥离 BOM, 回写统一用 utf-8, 避免给原文件追加 BOM
+            used_encoding = "utf-8" if encoding == "utf-8-sig" else encoding
+            break
+        except UnicodeDecodeError:
+            continue
+    if raw is None:
+        logger.warn("配置文件读取失败,账号密码仅本次运行生效.", shift=True)
+        return False
+
+    def replace_field(text: str, key: str, value: str) -> str:
+        # 只匹配行内空白: \s 会吞掉换行, 导致下一行被整体替换掉
+        pattern = re.compile(rf"(?m)^([ \t]*{key}[ \t]*=[ \t]*).*$")
+        if pattern.search(text):
+            return pattern.sub(lambda match: match.group(1) + value, text, count=1)
+        if "[user-account]" in text:
+            return text.replace("[user-account]", f"[user-account]\n{key} = {value}", 1)
+        return text.rstrip("\r\n") + f"\n[user-account]\n{key} = {value}\n"
+
+    raw = replace_field(raw, "username", username)
+    raw = replace_field(raw, "password", password)
+    try:
+        with open(config_path, "w", encoding=used_encoding) as file:
+            file.write(raw)
+    except OSError as exc:
+        logger.log_exception("保存账号密码到配置文件失败.", exc)
+        return False
+    return True
+
+
+def ensure_credentials(config) -> None:
+    """配置文件未填账号密码时, 在终端引导输入并回存, 之后即可全自动登录。"""
+    if config.username and config.password:
+        return
+    if not config.config_path or not sys.stdin.isatty() or not sys.stdout.isatty():
+        return
+    try:
+        logger.info("配置文件未填写账号密码,现在输入一次即可永久自动登录(直接回车可跳过).", shift=True)
+        username = input("请输入账号(手机号): ").strip()
+        if not username:
+            return
+        password = getpass.getpass("请输入密码: ").strip()
+        if not password:
+            return
+    except (EOFError, KeyboardInterrupt):
+        logger.info("", shift=True)
+        return
+    if save_credentials_to_config(config.config_path, username, password):
+        logger.event("自动登录", 方式="账号密码", 状态="已保存到配置文件", 文件=config.config_path)
+    config.username = username
+    config.password = password
+    logger.info("已记录本次输入的账号密码,正在自动登录...")
+
+
 async def main(config) -> bool:
     modules, tasks = [], []
     playback_enabled = asyncio.Event()
@@ -249,6 +323,14 @@ async def main(config) -> bool:
         remember_login_cookies(cookies)
         logger.event("本地凭证", 数量=len(cookies) if cookies else 0, 文件=COOKIE_PATH)
         page, context = await init_page(p, config, cookies)
+        # 捕获课程流程中新开的测验页面(如课堂测验跳转的新标签页), 自动作答
+        def _on_new_page(new_page):
+            asyncio.ensure_future(quiz_page.auto_answer_new_page(new_page, config))
+        context.on("page", _on_new_page)
+        logger.event(
+            "测验页面捕获",
+            状态="已启用" if quiz_page.llm.enabled() else "未配置 API Key, 仅监听不答题",
+        )
         monitor_task = None
         try:
             login_by_cookie = await ensure_login(context, page, cookies, config, modules)
@@ -262,6 +344,7 @@ async def main(config) -> bool:
                     asyncio.create_task(video_optimize(page, config)),
                     asyncio.create_task(skip_questions(page, event_loop_answer)),
                     asyncio.create_task(play_video(page, playback_enabled)),
+                    asyncio.create_task(periodic_cookie_sync(context)),
                 ]
             )
             logger.event(
@@ -401,8 +484,16 @@ def cli() -> int:
         updater.check_for_update(logger)
         installer.validate_python_version()
         base_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
-        config_path = args.config or os.path.join(base_dir, "config.ini")
+        default_config_name = "config.macos.ini" if sys.platform == "darwin" else "config.ini"
+        config_path = args.config or os.path.join(base_dir, default_config_name)
         mirrors_path = os.path.join(base_dir, "data", "mirrors.json")
+        # 启动即补齐缺失的配置文件(只创建不覆盖), 个人配置不会被提交到仓库
+        created_files = ensure_config_files(config_path)
+        for path in created_files:
+            logger.info(f"已生成默认配置文件: {path}", shift=True)
+        if config_path in created_files:
+            logger.warn("配置文件为默认模板, 请填写课程链接([course-url])后重新运行.", shift=True)
+            return 0
         config = Config(config_path, mirrors_path)
         logger.context(配置文件=config_path)
         logger.event(
@@ -437,6 +528,7 @@ def cli() -> int:
         if not config.course_urls:
             logger.error("未检测到有效网址或不支持此类网页,请检查配置文件!")
             return 2
+        ensure_credentials(config)
         if not asyncio.run(main(config)):
             exit_code = 1
     except TargetClosedError as exc:

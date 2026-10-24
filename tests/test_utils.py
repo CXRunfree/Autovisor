@@ -1,3 +1,6 @@
+import json
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -16,6 +19,12 @@ class _Logger:
         self.throttled.append((key, msg))
 
     def debug(self, msg):
+        pass
+
+    def info(self, msg, shift=False):
+        pass
+
+    def warn(self, msg, shift=False):
         pass
 
     def log_exception(self, msg, exc=None, shift=False):
@@ -204,6 +213,44 @@ class OptimizePageTests(LoggerPatchMixin, unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(utils, "evaluate_js", evaluate_js):
             await utils.optimize_page(page, config, catalog)
         evaluate_js.assert_not_awaited()
+
+
+class LoadCookiesTests(LoggerPatchMixin, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.path = os.path.join(self._tmpdir.name, "cookies.json")
+
+    def _write(self, text):
+        with open(self.path, "w", encoding="utf-8") as file:
+            file.write(text)
+
+    def test_returns_none_for_missing_file(self):
+        self.assertIsNone(utils.load_cookies(self.path))
+
+    def test_filters_expired_and_third_party_cookies(self):
+        cookies = [
+            {"name": "a", "domain": ".zhihuishu.com", "path": "/", "value": "v"},
+            {"name": "old", "domain": ".zhihuishu.com", "path": "/", "value": "v", "expires": 1},
+            {"name": "track", "domain": ".example.com", "path": "/", "value": "v"},
+        ]
+        self._write(json.dumps(cookies))
+        loaded = utils.load_cookies(self.path)
+        self.assertEqual([cookie["name"] for cookie in loaded], ["a"])
+
+    def test_returns_none_for_corrupt_file(self):
+        self._write("{not json")
+        self.assertIsNone(utils.load_cookies(self.path))
+
+    def test_returns_none_for_non_list_payload(self):
+        self._write(json.dumps({"a": 1}))
+        self.assertIsNone(utils.load_cookies(self.path))
+
+    def test_keeps_unexpired_session_cookies(self):
+        cookies = [{"name": "a", "domain": ".zhihuishu.com", "path": "/", "value": "v", "expires": -1}]
+        self._write(json.dumps(cookies))
+        self.assertEqual(len(utils.load_cookies(self.path)), 1)
 
 
 if __name__ == "__main__":

@@ -13,8 +13,16 @@ from modules.progress import show_progress
 from modules.logger import Logger
 from modules.configs import Config
 
-config = Config()
+config = None
 logger = Logger()
+
+
+def _default_config():
+    """延迟构造默认 Config: 程序 import 阶段配置文件可能尚未生成。"""
+    global config
+    if config is None:
+        config = Config()
+    return config
 
 
 SUPPORTED_PYTHON = ((3, 10), (3, 11), (3, 12), (3, 13))
@@ -119,7 +127,9 @@ def add_runtime_search_paths(res_dir):
                 pass
 
 
-def test_mirrors(config_obj=config):
+def test_mirrors(config_obj=None):
+    if config_obj is None:
+        config_obj = _default_config()
     available_mirrors = []
     for name, url in config_obj.mirrors.items():
         logger.info(f"正在测试 {name} 镜像源...")
@@ -196,7 +206,9 @@ def get_system_arch():
         return "win32"
 
 
-def download_wheel(mirror_name, base_url, package_name, version=None, config_obj=config):
+def download_wheel(mirror_name, base_url, package_name, version=None, config_obj=None):
+    if config_obj is None:
+        config_obj = _default_config()
     # 构造 URL
     package_url = f"{base_url}/simple/{package_name}/"
 
@@ -263,7 +275,9 @@ def is_installed(package, version):
         return None, False
 
 
-def install_package(package, version, mirrors, config_obj=config):
+def install_package(package, version, mirrors, config_obj=None):
+    if config_obj is None:
+        config_obj = _default_config()
     alias = mapping[package]
     res_dir = get_res_dir()
     logger.info(f"{package}-{version} 未安装，开始下载...")
@@ -306,7 +320,9 @@ def install_package(package, version, mirrors, config_obj=config):
 
 
 # 下载器,启动!
-def start(config_obj=config):
+def start(config_obj=None):
+    if config_obj is None:
+        config_obj = _default_config()
     if os.name != "nt":
         modules = []
         missing = []

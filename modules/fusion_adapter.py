@@ -26,6 +26,7 @@ from playwright.async_api import Page
 from playwright._impl._errors import TargetClosedError
 
 from modules.logger import Logger
+from modules.llm import pick_option
 
 logger = Logger()
 
@@ -117,23 +118,50 @@ class FusionAdapter:
     async def skip_ai_exercise(page: Page) -> bool:
         """检测 AI 随堂弹窗并自动选选项+提交, 成功(或已处理)返回 True。
 
-        顺序: 选第一个选项 -> 点提交 -> 关闭后恢复播放。
+        顺序: 大模型选选项(失败点第一个) -> 点提交 -> 关闭后恢复播放。
         """
         if not await FusionAdapter.ai_exercise_visible(page):
             return False
         logger.info("检测到 AI随堂练习弹窗, 自动选择并提交.")
         try:
-            clicked = bool(
-                await page.evaluate(
-                    """() => {
-                        const opt = document.querySelector(%s);
-                        if (opt) { opt.click(); return true; }
-                        return false;
-                    }""" % ("'" + _OPTION_SELECTOR + "'",)
+            # 先让大模型选: 抽弹窗文本与各选项文本, 匹配后点击对应选项
+            chosen_idx = -1
+            option_handles, option_texts = [], []
+            try:
+                option_handles = await page.query_selector_all(_OPTION_SELECTOR)
+                for h in option_handles:
+                    try:
+                        option_texts.append(" ".join((await h.inner_text()).split()))
+                    except Exception:
+                        option_texts.append("")
+                dlg = await page.query_selector(AI_CLASS_EXERCISE_DIALOG)
+                dialog_text = ""
+                if dlg:
+                    dialog_text = " ".join((await dlg.inner_text()).split())
+                if option_handles:
+                    chosen_idx = await pick_option(dialog_text, option_texts)
+            except Exception as exc:
+                logger.debug_throttled(
+                    "fusion:ai_llm",
+                    f"大模型选题跳过: {logger.summarize_exception(exc)}",
                 )
-            )
-            if not clicked:
-                logger.debug_throttled("fusion:ai_opt", "未找到选项按钮")
+
+            if chosen_idx >= 0:
+                logger.info(f"AI 随堂练习使用大模型选择: {option_texts[chosen_idx]}")
+                await option_handles[chosen_idx].click(timeout=2000)
+                clicked = True
+            else:
+                clicked = bool(
+                    await page.evaluate(
+                        """() => {
+                            const opt = document.querySelector(%s);
+                            if (opt) { opt.click(); return true; }
+                            return false;
+                        }""" % ("'" + _OPTION_SELECTOR + "'",)
+                    )
+                )
+                if not clicked:
+                    logger.debug_throttled("fusion:ai_opt", "未找到选项按钮")
             await page.wait_for_timeout(600)
             submitted = bool(
                 await page.evaluate(

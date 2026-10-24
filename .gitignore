@@ -2,6 +2,7 @@ build/
 dist/
 packages/*
 data/*
+!data/llm.json.example
 resources/*
 !data/mirrors.json
 !resources/QRcode.jpg
@@ -14,6 +15,8 @@ __pycache__/
 .vscode/
 .venv/
 config.ini
+data/llm.json
+data/cookies.json
 config.macos.ini
 .autovisor/
 captcha/
