@@ -1,0 +1,36 @@
+[user-account]
+;配置账号密码，留空则打开网页后需手动登录
+username =
+password =
+
+[browser-option]
+;Linux 默认使用 Playwright 自带的 Chromium
+;首次运行前执行 uv run playwright install chromium
+driver = chromium
+;指定浏览器所在路径，留空则使用 Playwright 自带的 Chromium
+EXE_PATH =
+
+[script-option]
+;是否自动过登录时的滑块验证(默认:True)，需要 uv sync --extra captcha
+enableAutoCaptcha = True
+;是否自动隐藏浏览器窗口(默认:False)，Linux 下无效
+enableHideWindow = False
+;是否展示赞赏码(默认:True)
+showDonateCode = True
+
+[course-option]
+;限制每门课程刷课时长/min (不限制:0)
+limitMaxTime = 0
+;限定播放倍速 (最高:1.8)
+limitSpeed = 1.0
+;设置是否静音播放 (默认:True)
+soundOff = True
+
+[course-url]
+;配置要学习的课程链接,支持(智慧)共享课
+;可继续添加多个课程链接
+URL1 =
+URL2 =
+URL3 =
+URL4 =
+URLn =
