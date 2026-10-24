@@ -62,15 +62,49 @@ def save_cookies(cookies, filename="cookies.json"):
             os.remove(temp_path)
         raise
 
+def is_zhihuishu_domain(domain) -> bool:
+    """判断 cookie 域名是否属于智慧树(含所有子域)。"""
+    host = str(domain or "").strip().lstrip(".").lower()
+    return host == "zhihuishu.com" or host.endswith(".zhihuishu.com")
+
+
+def filter_zhihuishu_cookies(cookies, now=None):
+    """筛出智慧树域下未过期的 Cookies, 其余(过期/无效/第三方)全部丢弃。"""
+    now = time.time() if now is None else now
+    filtered = []
+    for cookie in cookies or []:
+        if not isinstance(cookie, dict):
+            continue
+        name = str(cookie.get("name") or "").strip()
+        if not name or not is_zhihuishu_domain(cookie.get("domain")):
+            continue
+        expires = cookie.get("expires", cookie.get("expirationDate"))
+        if isinstance(expires, (int, float)) and expires > 0 and expires <= now:
+            continue
+        filtered.append(cookie)
+    return filtered
+
+
 def load_cookies(filename="cookies.json"):
-    """从文件加载 Cookies"""
+    """从文件加载 Cookies, 顺带过滤已过期与非智慧树域名的记录。"""
     try:
-        with open(filename, 'r') as f:
-            return json.load(f)
+        with open(filename, "r", encoding="utf-8") as f:
+            data = json.load(f)
     except FileNotFoundError:
         return None
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        logger.warn("Cookies 文件已损坏, 本次将忽略并重新登录.", shift=True)
         return None
+    except OSError as exc:
+        logger.log_exception("读取 Cookies 文件失败.", exc)
+        return None
+    if not isinstance(data, list):
+        return None
+    cookies = filter_zhihuishu_cookies(data)
+    dropped = len(data) - len(cookies)
+    if dropped:
+        logger.info(f"已忽略 {dropped} 条过期或无效的 Cookies.")
+    return cookies or None
 
 
 def normalize_zhihuishu_cookies(cookies, now=None):
@@ -78,11 +112,8 @@ def normalize_zhihuishu_cookies(cookies, now=None):
     normalized = []
     for cookie in cookies:
         domain = str(cookie.get("domain") or "").strip()
-        normalized_domain = domain.lstrip(".").lower()
         name = str(cookie.get("name") or "").strip()
-        valid_domain = normalized_domain == "zhihuishu.com" or normalized_domain.endswith(
-            ".zhihuishu.com"
-        )
+        valid_domain = is_zhihuishu_domain(domain)
         if not name or not valid_domain:
             continue
         expires = cookie.get("expires", cookie.get("expirationDate"))

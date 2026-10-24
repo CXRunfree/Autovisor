@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -20,7 +22,7 @@ class _Context:
     def __init__(self, cookies):
         self.cookies_payload = cookies
 
-    async def cookies(self, urls):
+    async def cookies(self):
         return self.cookies_payload
 
 
@@ -86,6 +88,79 @@ class CookiePersistenceTests(unittest.IsolatedAsyncioTestCase):
         await Autovisor.persist_login_cookies(context)
         self.assertEqual(self.save_cookies.call_count, 2)
         self.assertEqual(len(self.logger.events), 1)
+
+    async def test_filters_out_third_party_and_expired_cookies(self):
+        context = _Context(
+            [
+                _cookie("a"),
+                {"name": "track", "domain": ".example.com", "path": "/", "value": "x"},
+                {"name": "old", "domain": ".zhihuishu.com", "path": "/", "value": "x", "expires": 1},
+            ]
+        )
+        await Autovisor.persist_login_cookies(context)
+        self.assertEqual(self.save_cookies.call_count, 1)
+        saved = self.save_cookies.call_args[0][0]
+        self.assertEqual([cookie["name"] for cookie in saved], ["a"])
+        self.assertEqual(self.logger.events[0][1]["条数"], 1)
+
+    async def test_all_cookies_filtered_out_does_not_wipe_file(self):
+        context = _Context([{"name": "track", "domain": ".example.com", "path": "/", "value": "x"}])
+        await Autovisor.persist_login_cookies(context)
+        self.assertEqual(self.save_cookies.call_count, 0)
+        self.assertEqual(self.logger.events, [])
+
+
+class SaveCredentialsTests(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.config_path = os.path.join(self._tmpdir.name, "config.ini")
+
+    def _write(self, text, encoding="utf-8"):
+        with open(self.config_path, "w", encoding=encoding) as file:
+            file.write(text)
+
+    def _read(self, encoding="utf-8"):
+        with open(self.config_path, "r", encoding=encoding) as file:
+            return file.read()
+
+    def test_fills_empty_fields_and_keeps_comments(self):
+        self._write(
+            "[user-account]\n;配置账号密码，留空则打开网页后需手动登录\nusername =\npassword =\n\n[browser-option]\n;配置浏览器\ndriver = Edge\n"
+        )
+        self.assertTrue(
+            Autovisor.save_credentials_to_config(self.config_path, "13800000000", "secret")
+        )
+        content = self._read()
+        self.assertIn("username =13800000000", content)
+        self.assertIn("password =secret", content)
+        self.assertIn(";配置账号密码，留空则打开网页后需手动登录", content)
+        self.assertIn("driver = Edge", content)
+
+    def test_overwrites_existing_credentials(self):
+        self._write("[user-account]\nusername = old\npassword = oldpwd\n")
+        self.assertTrue(
+            Autovisor.save_credentials_to_config(self.config_path, "new", "newpwd")
+        )
+        content = self._read()
+        self.assertIn("username = new", content)
+        self.assertIn("password = newpwd", content)
+        self.assertNotIn("old", content)
+
+    def test_appends_missing_fields_under_user_account(self):
+        self._write("[user-account]\n")
+        self.assertTrue(Autovisor.save_credentials_to_config(self.config_path, "u", "p"))
+        content = self._read()
+        self.assertEqual(content.count("[user-account]"), 1)
+        self.assertIn("username = u", content)
+        self.assertIn("password = p", content)
+
+    def test_reads_and_writes_gbk_files_unchanged_in_gbk(self):
+        self._write("[user-account]\n;中文注释\nusername =\npassword =\n", encoding="gbk")
+        self.assertTrue(Autovisor.save_credentials_to_config(self.config_path, "u", "p"))
+        content = self._read(encoding="gbk")
+        self.assertIn("username =u", content)
+        self.assertIn(";中文注释", content)
 
 
 if __name__ == "__main__":

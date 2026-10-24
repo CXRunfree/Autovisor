@@ -1,197 +1,193 @@
-##  Autovisor
+# Autovisor · 大模型答题增强版
 
-**Github项目主页：**[CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor)
+**基于 [CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor) v3.18.4 的个人增强版**
+**本版维护：** tianjiannb ｜ **本版仓库：** `<在这里填入你的仓库地址>`
 
-------
-#### 2026/9/15 公告
-
-感谢大家三年多以来的喜爱与支持~
-
-准备读研, 本项目佛系更新
-
-#### 2026/9/24 Autovisor-3.18.4 更新
-
-**本次更新:**
-
-- 新增融合共享课支持: 自动跳过 AI 随堂练习弹窗、展开折叠目录、关闭弹窗后恢复播放, 并读取课时真实学习进度 ([#158](https://github.com/CXRunfree/Autovisor/pull/158)).
-
-**近期更新:**
-
-- 修复课程页卡死: 已读的"学前必读"弹窗是隐藏节点, 等它可见会一直等下去, 现在超时即跳过 ([#155](https://github.com/CXRunfree/Autovisor/pull/155)).
-- 课时切换、目录识别的等待也加上超时, 异常页面不再长时间卡住.
-- 支持 Python 3.13.
+在原版"全自动挂机刷课"的基础上，这个版本补齐了三件事：**弹题不用再瞎蒙**（接入 DeepSeek 大模型作答）、**账号密码只输一次**（首次运行引导输入并自动保存，之后全自动登录）、**登录状态更抗丢**（运行中定期落盘 Cookies，崩溃断电也不怕）。
 
 ------
-#### 一、程序介绍
 
-**项目简介:**
+## 一、本版增强功能
 
-这是一个可无人监督的自动化程序, 基于微软的 Playwright 框架, 由 Python 和 JavaScript 编写而成. 核心原理是使用浏览器模拟用户操作.
+### 1. DeepSeek 大模型自动答题（可选）
 
-**程序功能:**
+配置 `data/llm.json` 后，程序会用大模型作答，覆盖三类场景：
 
-- **支持自动登录**
-- **自动通过登录滑块验证(可选)**
-- **自动播放和切换下一集**
-- **自动跳过弹窗和弹题**
-- **自动静音、设置指定倍速**
-- **自动检测暂停并自动续播**
-- **支持智慧共享课、翻转课、融合共享课**
-- **支持刷习惯分**
-- **支持大模型自动作答弹题 (可选, 需配置 DeepSeek API, 见第六节)**
-- **支持隐藏窗口后台刷课**
-- 启动时自动检查更新
-- 后台实时更新学习进度
-- macOS 支持源码运行
-- 根据当前时间自动设置背景色(白天/夜晚)
-- 完成章节时提示已刷课时长
-- 各种自定义配置
+| 场景 | 原版行为 | 本版行为（配置 API 后） |
+|---|---|---|
+| 旧版共享课课中弹题 | 随机选一个 | 大模型作答 |
+| 新版共享课弹题页 (studywisdomh5) | 无法处理 | 大模型尽力作答，失败回退手动 |
+| 融合共享课 AI 随堂练习弹窗 | 固定选第一个 | 大模型作答 |
+| **自动弹出的测验/考试页面**（新标签页） | 无处理 | **自动捕获，逐题作答整张卷子** |
 
-#### 二、发行版运行
+测验页面的作答流程：自动抽取全部题目 → 与页面已选状态比对 → 只点未作答的题 → 翻页直到答完。
 
-1. 请确保系统为 Windows 10 及以上.
+- `auto_submit = false`（默认）：全部答完但**不交卷**，留给你人工核对后手动提交；
+- `auto_submit = true`：交卷前刷新页面回到第一题，**整卷复核一遍后再自动提交**；
+- 同一个测验页面 10 分钟内不会重复作答；
+- 未配置 API Key 时**完全保持原版行为**，不报错、不弹窗；
+- API 请求失败或答案匹配不上选项时，自动回退原默认行为，绝不中断刷课。
 
-2. 发行版文件夹内自带 **config.ini** (可能没显示 `.ini` 后缀名), 使用 **文本编辑器** 打开.
+### 2. 全自动账号密码登录
 
-3. 根据文件内的注释, 填写配置文件:
+- `config.ini` 里填了账号密码：打开登录页自动填写、自动勾选协议、自动提交，配合自动过滑块做到全程无感；
+- 账号密码**留空**：首次运行时会在命令行窗口引导输入一次（密码不回显），并自动保存回 `config.ini`，之后每次启动都是全自动登录；
+- 已适配智慧树新版登录页（login.zhihuishu.com），新老页面都能自动填写；
+- 登录没成功时，日志会输出页面上的具体错误提示（如密码错误、连续失败锁定），方便排查。
 
-   - 默认启动系统自带的 Edge 浏览器;
-   - 文件里的 **EXE_PATH 项** 用于自定义浏览器路径, 需要精确到**浏览器可执行文件的位置**, 可以保持默认不填;
-   - 不知道浏览器的安装路径? 见下方 **五、常见问题**.
-   - 确认 **保存修改** 后再退出.
+### 3. 登录 Cookies 更可靠的保存
 
-   <p align="left"><img src="resources/markdown/config_detail.png" width="600" alt="config.ini 配置说明"></p>
+- **运行中每 5 分钟自动续存**一次 Cookies（有变化才写盘）：以前只在登录和退出时保存，服务器中途续期的凭证会随崩溃/断电丢失，现在不会了；
+- 按 `*.zhihuishu.com` 域名筛选保存，不再依赖固定的子域列表，新子域也能覆盖；
+- 加载时自动过滤已过期的 Cookies；文件损坏时记日志后自动重新登录，不会崩溃；
+- 磁盘写入采用"临时文件 + 原子替换"，写一半断电也不会留下坏文件。
 
-4. 注意事项
+### 4. 保留的原版功能
 
-   - **`config.ini` 配置项不需要加引号.**
+- 自动过登录滑块验证（可选，需 `enableAutoCaptcha = True`）
+- 自动播放、自动切换下一集、自动检测暂停并续播
+- 自动跳过弹窗和课中弹题
+- 自动静音、指定倍速（0.5–1.8）
+- 支持智慧共享课、翻转课、融合共享课；支持刷习惯分
+- 支持隐藏窗口后台刷课
+- 启动时自动检查更新，后台实时上报学习进度
+- macOS 支持源码运行（`./run_macos.sh`）
 
-   - **如果需要修改下载镜像源, 请编辑 `data/mirrors.json`**
+------
 
-5. 运行 **Autovisor.exe**, 会自动打开浏览器, 进入网课界面后就能自动刷课了!
+## 二、快速开始（Windows 源码运行）
 
-   (如果未设置 **enableAutoCaptcha=True**, 则需要**手动完成**登录时的滑块验证)
+环境要求：Windows 10+，Python 3.10–3.13，系统已装 Edge 或 Chrome 浏览器（程序直接调用系统浏览器，**无需** `playwright install` 下载浏览器）。
 
-**发行版目录说明:**
+```bat
+:: 1. 创建虚拟环境并安装依赖（含滑块验证所需 numpy/opencv）
+python -m venv .venv
+.venv\Scripts\pip install -e ".[captcha]"
 
-- `resources/`: 图片、脚本等程序资源.
-- `packages/`: 自动下载的 NumPy、OpenCV 等运行时依赖.
-- `data/`: 登录 Cookies 和镜像源配置.
+:: 2. 直接启动: 缺失的 config.ini 和 data/llm.json 会自动生成默认模板
+::    (双击 run-autovisor-llm.bat 也可以)
+.venv\Scripts\python.exe Autovisor.py
 
-#### 三、macOS 源码运行
-
-需要 macOS 11 (Big Sur) 及以上 (Apple Silicon / Intel 均可) 和系统 Chrome浏览器. 先复制模板并填写配置:
-
-```bash
-cp config.macos.ini.example config.macos.ini
+:: 3. 按 提示/注释 编辑 config.ini 填写课程链接, 再次运行即可
 ```
 
-打开 `config.macos.ini`, 填入课程链接 (账号密码可留空, 用浏览器手动登录), 然后运行:
+首次启动流程：程序自动生成配置文件 → 在 `config.ini` 里填课程链接后重启 → 命令行输入一次账号密码（自动保存，以后不再问）→ 自动登录开始刷课。
 
-```bash
-./run_macos.sh
-```
+**常用命令行参数：**
 
-首次运行会自动部署环境 (安装 `uv`、依赖和必要的浏览器), 之后直接启动. 环境或配置变化时会自动重新部署, 也可用 `./run_macos.sh --setup` 强制重建.
+| 参数 | 作用 |
+|---|---|
+| `--config 路径` | 指定配置文件（默认用程序目录下的 `config.ini`） |
+| `--check-browser` | 只检查浏览器启动和登录状态，不刷课 |
+| `--check-course URL` | 阻止进度上报和播放，只检查课程目录选择器是否适配 |
+| `--import-cookies PATH` | 从 Requests CookieJar 格式的 JSON 安全导入未过期 Cookie |
 
-#### 四、发行版下载
-
-- Github: [Releases · CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor/releases)
-- 网盘备用: [蓝奏云 · Autovisor-for-windows](https://wwk.lanzouj.com/b05evsxif) 密码: 492l
-
-这是已经打包好的程序, 若需要**源代码**请于 Github 项目主页下载.
-
-#### 五、常见问题
-
-1. 解压后没有 `Autovisor.exe` / 提示缺少依赖文件?
-
-   - 多为杀毒软件误杀: 加入信任区后重新解压; 也请确认下载的是 Releases 里的发行包, 而不是源码.
-
-2. 第一次启动很久没反应 / 依赖下载失败?
-
-   - 首次会检查并下载运行时依赖 (numpy、opencv-python), 等后台日志跑完即可; 下载失败会自动换用 `data/mirrors.json` 里的下一个镜像.
-   - 报 `ModuleNotFoundError` / `ImportError: numpy...` 时, 删掉 `packages/` 目录重新运行.
-
-3. 提示 **未检测到有效网址** / 一直**等待登录完成** ?
-
-   - `[course-url]` 要填**课程播放页**的地址 (能直接看到课程视频的页面), 不要填课程首页.
-   - 登录页改版导致的等待已在最新版修复, 请先升级到最新发行版.
-
-4. 登录时还是要手动过滑块?
-
-   - 只有 `enableAutoCaptcha = True` 才会自动过滑块, 否则需要手动完成.
-
-5. 只出现命令行窗口, 没有浏览器界面?
-
-   - 命令行是程序后台, 可以查看运行状态; 浏览器加载需要时间, 后台没异常退出就不必担心. 报错通常是浏览器路径配置有误.
-   - 找浏览器路径: 打开浏览器, 地址栏输入 `chrome://version`, 其中的"可执行文件目录"就是.
-
-   <p align="left"><img src="resources/markdown/broswer_version.png" width="720" alt="Chrome 可执行文件目录"></p>
-
-6. 看不到浏览器窗口 / 想后台刷课 / 报 `MoveWindow 无效的窗口句柄`?
-
-   - 最小化会让浏览器暂停渲染, 进度不增加, 也会影响弹题检测. 想后台刷课请用 `enableHideWindow = True`, 程序会把窗口移出屏幕.
-   - 若报窗口句柄错误, 改回 `enableHideWindow = False`.
-
-7. 卡在加载播放页 / 不会自动跳下一课 / 新版页面刷不了课?
-
-   - 这类基本都是**页面结构还没适配**, 不是配置问题. 目前支持: 智慧共享课、翻转课、融合共享课.
-
-   - 智慧树新版 **AI 课程** (带 AI 角标的课程) 尚未适配, 表现就是识别不到课时、停在加载中或单个视频无限循环; 需要等待适配
-
-     欢迎附上课程链接和日志提 issue.
-
-8. 弹题关不掉 / 程序卡住?
-
-   - 弹题随时可能出现, 而检测不是实时的, 所以无法完全消除; 页面长时间无响应时, 先确认浏览器没有被最小化.
-
-9. 遇到 PPT、PDF 等没有视频的章节会卡住?
-
-   - 目前只处理视频课时, 非视频章节需要手动切到有视频的课时.
-
-10. 不想再弹赞赏码?
-
-    - 感谢您对本项目的支持~ 只需要设置 `showDonateCode = False` 就好了!
+macOS：复制 `config.macos.ini.example` 为 `config.macos.ini` 填好课程链接后，运行 `./run_macos.sh`，首次运行会自动部署环境。
 
 ------
-#### 六、弹题大模型作答 (可选功能)
 
-程序支持接入 **DeepSeek API** 对课中弹题进行大模型作答, 覆盖三类弹题:
+## 三、配置说明
 
-- 旧版共享课弹题 (原逻辑为随机选择, 配置后改为大模型作答);
-- 新版共享课弹页 (studywisdomh5, 大模型尽力作答, 失败仍回退手动);
-- 融合共享课 AI 随堂练习弹窗 (原逻辑为选第一个选项, 配置后改为大模型作答).
+### config.ini
 
-**API 填写位置**: 项目目录下的 `data/llm.json` (首次可复制 `data/llm.json.example`):
+> 缺失时首次运行自动生成默认模板（macOS 生成 `config.macos.ini`），也可以从 `config.ini.example` 手动复制。已存在的文件**永远不会被程序覆盖**。
+
+```ini
+[user-account]
+username =          ; 账号(手机号), 留空则首次运行时在终端引导输入并自动保存
+password =          ; 密码, 同上
+
+[browser-option]
+driver = Edge       ; 浏览器: Edge 或 Chrome
+EXE_PATH =          ; 浏览器可执行文件路径, 不填用系统默认
+
+[script-option]
+enableAutoCaptcha = True    ; 自动过登录滑块(需要 numpy/opencv 依赖)
+enableHideWindow = False    ; 隐藏浏览器窗口后台刷课(勿最小化, 用此项)
+showDonateCode = True       ; 展示原版赞赏码(个人版可设为 False)
+
+[course-option]
+limitMaxTime = 30   ; 每门课程学习时限/分钟, 0 = 不限制
+limitSpeed = 1.0    ; 播放倍速, 上限 1.8
+soundOff = True     ; 静音播放
+
+[course-url]
+URL1 = https://...  ; 必须是能直接看到课程视频的"播放页"地址, 不是课程首页
+URLn =              ; 可继续添加多个
+```
+
+> 配置项不需要加引号；找浏览器路径：浏览器地址栏输入 `chrome://version`，其中"可执行文件目录"就是。
+
+### data/llm.json（大模型答题）
 
 ```json
 {
-  "api_key": "在这里填入你的 DeepSeek API Key",
+  "api_key": "在 https://platform.deepseek.com 申请",
   "api_base": "https://api.deepseek.com",
-  "model": "deepseek-chat"
+  "model": "deepseek-chat",
+  "auto_submit": false
 }
 ```
 
-- `api_key`: 在 [DeepSeek 开放平台](https://platform.deepseek.com) 申请, **留空则完全保持原有行为**, 不会报错;
-- `api_base` / `model`: 兼容 OpenAI 接口格式, 可自行替换为其他兼容服务;
-- API Key 仅保存在本地 `data/llm.json`, 不会上传到任何服务器;
-- 大模型作答失败或答案无法匹配选项时, 自动回退到原有默认行为, 不会中断刷课流程.
+| 字段 | 说明 |
+|---|---|
+| `api_key` | **留空 = 完全关闭大模型答题**，程序按原版行为运行。Key 只存在本地，不上传任何服务器 |
+| `api_base` | 兼容 OpenAI 接口格式，可换成其他兼容服务 |
+| `model` | 默认 `deepseek-chat`，可换 `deepseek-reasoner` 等 |
+| `auto_submit` | `false`：测验页只作答不交卷，人工核对后提交；`true`：复核整卷后自动交卷 |
+
+费用参考：弹题请求很短，整个挂机周期的调用量很小，按 DeepSeek 官方价格计费，一般可忽略不计。
 
 ------
-#### 已知问题
 
-- **长时间挂机**有概率弹出人机验证, 程序检测到后会暂停操作, 直到手动验证完成;
-- 浏览器窗口若**最小化**可能导致视频播放进度不增加;
-- 若出现其他异常崩溃, 请提交 issue 并附上报错信息.
+## 四、常见问题
 
-#### 写在最后
+1. **解压/克隆后启动报缺少依赖文件？**
+   源码运行请先完成"快速开始"的依赖安装；打包版多为杀毒软件误杀，加入信任区后重新解压。
 
-觉得体验还不错? 请留下你宝贵的 Star ⭐, 并分享给更多有需要的人!
+2. **第一次启动很久没反应 / 依赖下载失败？**
+   首次会检查并下载运行时依赖（numpy、opencv-python），失败会自动换用 `data/mirrors.json` 里的下一个镜像。报 `ModuleNotFoundError: numpy` 时删掉 `packages/` 目录重跑。
 
-或者为项目发电支持一下~
+3. **提示"未检测到有效网址"？**
+   `[course-url]` 要填**课程播放页**地址（能直接看到课程视频的页面），不要填课程首页或个人中心。
 
-<p align="left"><img src="resources/markdown/donate.png" width="200" alt="赞赏码"></p>
+4. **登录时还是要手动过滑块？**
+   只有 `enableAutoCaptcha = True` 才会自动过滑块。账号密码已配置但仍停在登录页时，看日志里的"登录未完成, 页面提示: xxx"。
 
-**作者的 CSDN:** [欢迎关注~](https://blog.csdn.net/Runfreeone)
+5. **只出现命令行窗口，没有浏览器界面？**
+   命令行是程序后台，浏览器加载需要时间。报错通常是 `EXE_PATH` 配置有误。
 
-**声明：本程序只可用于学习和研究计算机原理, 请于 24h 内删除所有存档！**
+6. **看不到浏览器窗口 / 想后台刷课？**
+   最小化会导致视频进度不增加、弹题检测失效。后台刷课请用 `enableHideWindow = True`。
+
+7. **卡在加载播放页 / 识别不到课时？**
+   智慧树新版 **AI 课程**（带 AI 角标）尚未适配。目前支持智慧共享课、翻转课、融合共享课。
+
+8. **配置了 API Key 但弹题还是乱选 / 测验页没反应？**
+   依次检查：`data/llm.json` 是否和 `Autovisor.py` 在同一运行目录；`api_key` 是否非空；`.venv` 里是否装了 `requests`（`pip install requests`）。启动日志里"测验页面捕获"一栏会显示当前状态。
+
+9. **大模型会答错吗？交卷要慎重吗？**
+   会。大模型是尽力作答，专业性强或题库冷门的题可能出错。建议保持 `auto_submit = false`，答完后人工核对再交卷。
+
+10. **遇到 PPT、PDF 等没有视频的章节会卡住？**
+    目前只处理视频课时，非视频章节需要手动切到有视频的课时。
+
+11. **不想再弹赞赏码？**
+    设置 `showDonateCode = False`。
+
+------
+
+## 五、已知问题
+
+- 长时间挂机有概率弹出人机验证，程序检测到后会暂停操作，需要手动完成验证；
+- 浏览器窗口**最小化**可能导致视频播放进度不增加，请用 `enableHideWindow` 代替最小化；
+- 大模型作答依赖页面结构，平台改版可能导致个别题型回退为默认行为。
+
+------
+
+## 六、声明与致谢
+
+- 本项目基于 [CXRunfree/Autovisor](https://github.com/CXRunfree/Autovisor)（MIT License）修改，感谢原作者三年多的维护；
+- 大模型答题功能使用了 [DeepSeek 开放平台](https://platform.deepseek.com) 的 API 服务；
+- **声明：本程序只可用于学习和研究计算机原理，请于 24h 内删除所有存档！使用本程序产生的一切后果由使用者自行承担。**
+- **隐私：** 所有个人配置与凭证（`config.ini`、`config.macos.ini`、`data/llm.json`、`data/cookies.json`）均在 `.gitignore` 中显式排除，不会被提交或上传；API Key 和登录 Cookies 只保存在本地。
