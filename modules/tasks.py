@@ -275,16 +275,29 @@ async def skip_questions(page: Page, event_loop) -> None:
             else:
                 logger.log_exception("答题模块执行失败.", e)
             if "fusioncourseh5" in page.url:
-                not_finish_close = await page.query_selector(".el-dialog")
-                if not_finish_close:
-                    await page.press(".el-dialog", "Escape", timeout=1000)
+                try:
+                    not_finish_close = await page.query_selector(".el-dialog")
+                    if not_finish_close:
+                        await page.press(".el-dialog", "Escape", timeout=1000)
+                except Exception as cleanup_exc:
+                    # 页面切换时执行上下文会被销毁, 清理失败不应终止答题任务
+                    logger.debug_throttled(
+                        "skip_questions:cleanup",
+                        f"答题弹窗清理跳过: {logger.summarize_exception(cleanup_exc)}",
+                    )
             elif "hike.zhihuishu.com" in page.url:
                 logger.warn("当前课程为新版本,不支持自动答题.", shift=True)
                 return
             else:
-                not_finish_close = await page.query_selector(".el-message-box__headerbtn")
-                if not_finish_close:
-                    await not_finish_close.click()
+                try:
+                    not_finish_close = await page.query_selector(".el-message-box__headerbtn")
+                    if not_finish_close:
+                        await not_finish_close.click()
+                except Exception as cleanup_exc:
+                    logger.debug_throttled(
+                        "skip_questions:cleanup",
+                        f"答题弹窗清理跳过: {logger.summarize_exception(cleanup_exc)}",
+                    )
             continue
 
 
