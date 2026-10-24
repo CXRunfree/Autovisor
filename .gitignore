@@ -15,6 +15,7 @@ __pycache__/
 .venv/
 config.ini
 config.macos.ini
+config.linux.ini
 .autovisor/
 captcha/
 logs/
