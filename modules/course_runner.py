@@ -20,6 +20,8 @@ LESSON_CLICK_TIMEOUT_MS = 10_000
 
 # 目录节点在 detect_catalog 里刚确认过存在, 这里只做一次快速复核。
 CATALOG_ATTACH_TIMEOUT_MS = 5_000
+# 智慧树新版课程页是 SPA, 首屏目录渲染受网络影响较大; 20s 在慢网下会误判为失败。
+CATALOG_DETECT_TIMEOUT_SECONDS = 60
 
 
 class CourseOutcome(Enum):
@@ -31,11 +33,11 @@ class CourseOutcome(Enum):
 async def detect_catalog_after_verification(
     page: Page, course_url: str
 ) -> CatalogSelectors:
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + CATALOG_DETECT_TIMEOUT_SECONDS
     while True:
         if await has_visible_verification(page):
             await wait_until_verification_hidden(page)
-            deadline = time.monotonic() + 20
+            deadline = time.monotonic() + CATALOG_DETECT_TIMEOUT_SECONDS
         remaining_ms = int(max(0, deadline - time.monotonic()) * 1000)
         if remaining_ms <= 0:
             raise RuntimeError("课程目录加载超时，且未检测到可处理的安全验证")
@@ -57,8 +59,8 @@ async def run_course(
     await page.wait_for_selector(
         catalog.item, state="attached", timeout=CATALOG_ATTACH_TIMEOUT_MS
     )
-    # 融合共享课: 默认折叠的目录需先展开, 否则 get_filtered_class 采不全课时。
-    if catalog.name == "fusion":
+    # 融合共享课/新版智慧共享课: 默认折叠的目录需先展开, 否则 get_filtered_class 采不全课时。
+    if catalog.name in {"fusion", "wisdom_mooc"}:
         await FusionAdapter.expand_catalog(page)
         await page.wait_for_timeout(400)
     to_learn = await get_filtered_class(page, catalog)

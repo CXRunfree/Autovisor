@@ -4,6 +4,7 @@ from modules.lesson_navigation import (
     FUSION_CATALOG,
     HIKE_CATALOG,
     WISDOM_CATALOG,
+    WISDOM_MOOC_CATALOG,
     catalog_candidates,
     has_class,
     parse_progress_value,
@@ -26,6 +27,18 @@ class LessonNavigationTests(unittest.TestCase):
             catalog_candidates("https://hike.zhihuishu.com/x"),
             (HIKE_CATALOG,),
         )
+        self.assertIs(
+            catalog_candidates("https://wisdom-mooc.zhihuishu.com/study/index")[0],
+            WISDOM_MOOC_CATALOG,
+        )
+
+    def test_wisdom_mooc_catalog_covers_nested_lessons(self):
+        # 分节容器 .chapter-item 本身不是课时, 真正的课时在其 .chapter-content-second 子节点;
+        # 只有不含子节容器的 .chapter-item 才能作为独立课时。
+        self.assertIn(".chapter-content-second", WISDOM_MOOC_CATALOG.item)
+        self.assertIn(":not(:has(.chapter-content-second))", WISDOM_MOOC_CATALOG.item)
+        self.assertEqual(WISDOM_MOOC_CATALOG.active_class, "current")
+        self.assertEqual(WISDOM_MOOC_CATALOG.title, ".item-name")
 
     def test_progress_parser_clamps_and_rejects_non_finite_values(self):
         cases = {
