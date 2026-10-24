@@ -57,8 +57,8 @@ async def run_course(
     await page.wait_for_selector(
         catalog.item, state="attached", timeout=CATALOG_ATTACH_TIMEOUT_MS
     )
-    # 融合共享课: 默认折叠的目录需先展开, 否则 get_filtered_class 采不全课时。
-    if catalog.name == "fusion":
+    # 融合共享课/新版智慧共享课: 默认折叠的目录需先展开, 否则 get_filtered_class 采不全课时。
+    if catalog.name in {"fusion", "wisdom_mooc"}:
         await FusionAdapter.expand_catalog(page)
         await page.wait_for_timeout(400)
     to_learn = await get_filtered_class(page, catalog)

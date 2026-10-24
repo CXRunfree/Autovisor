@@ -47,6 +47,22 @@ FUSION_CATALOG = CatalogSelectors(
     progress_attribute="aria-valuenow",
 )
 
+# 新版智慧共享课(AI 课程, wisdom-mooc)目录: 两级结构。
+# - 无子节的单节课直接是 .chapter-item;
+# - 有子节的分节容器也是 .chapter-item, 真正的课时是内部的 .chapter-content-second,
+#   点击容器不会切换课时, 必须下钻到子节点。
+WISDOM_MOOC_CATALOG = CatalogSelectors(
+    name="wisdom_mooc",
+    item=".chapter-content-second, .chapter-item:not(:has(.chapter-content-second))",
+    active=".current",
+    finish=".finish-icon",
+    title=".item-name",
+    active_class="current",
+    progress=".el-progress",
+    progress_attribute="aria-valuenow",
+    course_title=".course-name",
+)
+
 HIKE_CATALOG = CatalogSelectors(
     name="hike",
     item=".file-item",
@@ -69,7 +85,13 @@ LEGACY_CATALOG = CatalogSelectors(
     course_title=".source-name",
 )
 
-CATALOGS = (WISDOM_CATALOG, FUSION_CATALOG, HIKE_CATALOG, LEGACY_CATALOG)
+CATALOGS = (
+    WISDOM_CATALOG,
+    WISDOM_MOOC_CATALOG,
+    FUSION_CATALOG,
+    HIKE_CATALOG,
+    LEGACY_CATALOG,
+)
 
 
 def parse_progress_value(value) -> int:
@@ -91,6 +113,8 @@ def has_class(class_attr: str | None, class_name: str) -> bool:
 def catalog_candidates(course_url: str) -> tuple[CatalogSelectors, ...]:
     if "hike.zhihuishu.com" in course_url:
         return (HIKE_CATALOG,)
+    if "wisdom-mooc.zhihuishu.com" in course_url:
+        return (WISDOM_MOOC_CATALOG, WISDOM_CATALOG, LEGACY_CATALOG)
     if "fusioncourseh5" in course_url:
         return (FUSION_CATALOG, WISDOM_CATALOG, LEGACY_CATALOG)
     return (WISDOM_CATALOG, LEGACY_CATALOG, FUSION_CATALOG)

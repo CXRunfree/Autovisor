@@ -114,8 +114,8 @@ async def learn_lesson(
                 last_activity = time.monotonic()
                 continue
 
-            # 融合共享课: AI 随堂练习弹窗自动选作答+提交(官方 learn_lesson 未处理)。
-            if catalog.name == "fusion" and await FusionAdapter.skip_ai_exercise(page):
+            # 融合共享课/新版智慧共享课: AI 随堂练习弹窗自动选作答+提交(官方 learn_lesson 未处理)。
+            if catalog.name in {"fusion", "wisdom_mooc"} and await FusionAdapter.skip_ai_exercise(page):
                 retry_count = 0
                 last_activity = time.monotonic()
                 continue
