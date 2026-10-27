@@ -11,6 +11,7 @@ from playwright.async_api import BrowserContext, Page, Playwright, TimeoutError,
 from playwright._impl._errors import TargetClosedError
 
 from modules import installer, updater
+from modules.ai_smart import is_ai_smart_url, run_ai_smart_course
 from modules.banner import print_banner
 from modules.configs import Config, ConfigError
 from modules.course_runner import (
@@ -59,6 +60,7 @@ ZHS_COOKIE_URLS = [
     "https://studywisdomh5.zhihuishu.com",
     "https://fusioncourseh5.zhihuishu.com",
     "https://hike.zhihuishu.com",
+    "https://ai-smart-course-student-pro.zhihuishu.com",
 ]
 
 
@@ -291,6 +293,27 @@ async def main(config) -> bool:
                     logger.info("重新进入播放页...")
                     await page.goto(course_url, wait_until="commit")
                     await page.wait_for_timeout(1500)
+
+                if is_ai_smart_url(course_url):
+                    logger.info("检测到 ai-smart 新形态课程.")
+                    logger.context(目录类型="ai-smart")
+                    logger.event("课程目录", 类型="ai-smart", 地址=page.url)
+                    await persist_login_cookies(context)
+                    playback_enabled.clear()
+                    outcome = await run_ai_smart_course(
+                        page, course_url, config, logger, playback_enabled
+                    )
+                    playback_enabled.clear()
+                    logger.event(
+                        "课程结果", 结果=outcome.value, 目录类型="ai-smart"
+                    )
+                    if outcome is CourseOutcome.FAILED:
+                        logger.warn("课程未确认完成, 已停止本轮运行.", shift=True)
+                        run_ok = False
+                        break
+                    if outcome is CourseOutcome.TIME_LIMIT:
+                        all_courses_complete = False
+                    continue
 
                 catalog = await detect_catalog_after_verification(page, page.url)
                 logger.info(f"检测到 {catalog.name} 课程目录.")
