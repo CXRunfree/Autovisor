@@ -29,21 +29,24 @@ class CourseOutcome(Enum):
 
 
 async def detect_catalog_after_verification(
-    page: Page, course_url: str
+    page: Page, course_url: str, timeout_seconds: int = 60
 ) -> CatalogSelectors:
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + timeout_seconds
     while True:
         if await has_visible_verification(page):
             await wait_until_verification_hidden(page)
-            deadline = time.monotonic() + 20
+            deadline = time.monotonic() + timeout_seconds
         remaining_ms = int(max(0, deadline - time.monotonic()) * 1000)
         if remaining_ms <= 0:
-            raise RuntimeError("课程目录加载超时，且未检测到可处理的安全验证")
+            raise RuntimeError(
+                f"课程目录加载超时({timeout_seconds}秒)，且未检测到可处理的安全验证"
+            )
         try:
             return await detect_catalog(
-                page, course_url, timeout_ms=min(1000, remaining_ms)
+                page, course_url, timeout_ms=min(1500, remaining_ms)
             )
         except RuntimeError:
+            await asyncio.sleep(1)
             continue
 
 
