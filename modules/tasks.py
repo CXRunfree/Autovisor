@@ -96,13 +96,17 @@ async def task_monitor(tasks: list[asyncio.Task]) -> None:
     logger.info("任务监控已退出.", shift=True)
 
 
-async def video_optimize(page: Page, config: Config) -> None:
+async def video_optimize(
+    page: Page, config: Config, playback_enabled: asyncio.Event | None = None
+) -> None:
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
             await asyncio.sleep(2)
+            if playback_enabled is not None and not playback_enabled.is_set():
+                continue
             try:
-                await page.wait_for_selector("video", state="attached", timeout=3000)
+                await page.wait_for_selector("video", state="attached", timeout=1500)
             except TimeoutError:
                 logger.debug_throttled(
                     "video:optimize",
@@ -158,6 +162,8 @@ async def play_video(
     while True:
         try:
             await asyncio.sleep(2)
+            if playback_enabled is not None and not playback_enabled.is_set():
+                continue
             try:
                 await page.wait_for_selector("video", state="attached", timeout=1000)
             except TimeoutError:
@@ -165,13 +171,6 @@ async def play_video(
                     "video:play",
                     "视频播放跳过: 页面未找到元素 video",
                 )
-                continue
-            if playback_enabled is not None and not playback_enabled.is_set():
-                paused = await run_on(
-                    page, "video", "(el) => el.paused", "读取视频暂停状态"
-                )
-                if paused is False:
-                    await run_on(page, "video", "(el) => el.pause()", "暂停视频")
                 continue
             state = await run_on(
                 page,
@@ -228,10 +227,15 @@ async def play_video(
             continue
 
 
-async def skip_questions(page: Page, event_loop) -> None:
+async def skip_questions(
+    page: Page, event_loop, playback_enabled: asyncio.Event | None = None
+) -> None:
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
+            if playback_enabled is not None and not playback_enabled.is_set():
+                await asyncio.sleep(2)
+                continue
             if "studywisdomh5.zhihuishu.com" in page.url:
                 await asyncio.sleep(2)
                 if not await has_visible_element(page, (".topic-title",)):
