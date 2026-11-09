@@ -119,15 +119,19 @@ async def init_page(p: Playwright, config, cookies) -> tuple[Page, BrowserContex
         可执行文件=config.exe_path or "默认",
         窗口大小=f"{screen_width}x{screen_height}",
     )
+        chrome_args = [
+        f"--window-size={screen_width},{screen_height}",
+        "--window-position=0,0",
+        "--no-default-browser-check",
+        "--no-first-run",
+    ]
+    if os.name == "nt":
+        chrome_args.append("--start-maximized")
     launch_args = {
         "channel": driver,
         "headless": False,
         "executable_path": config.exe_path if config.exe_path else None,
-        "args": [
-            "--start-maximized",
-            f"--window-size={screen_width},{screen_height}",
-            "--window-position=0,0",
-        ],
+        "args": chrome_args,
     }
     try:
         browser = await p.chromium.launch(**launch_args)
@@ -259,8 +263,8 @@ async def main(config) -> bool:
                     asyncio.create_task(
                         wait_for_verify(page, config, event_loop_verify)
                     ),
-                    asyncio.create_task(video_optimize(page, config)),
-                    asyncio.create_task(skip_questions(page, event_loop_answer)),
+                    asyncio.create_task(video_optimize(page, config, playback_enabled)),
+                    asyncio.create_task(skip_questions(page, event_loop_answer, playback_enabled)),
                     asyncio.create_task(play_video(page, playback_enabled)),
                 ]
             )
@@ -277,8 +281,11 @@ async def main(config) -> bool:
                 logger.section(f"课程 {index}/{course_total}")
                 logger.context(课程序号=f"{index}/{course_total}", 课程地址=course_url)
                 logger.info("正在加载播放页...")
-                await page.goto(course_url, wait_until="commit")
-                await page.wait_for_timeout(1500)
+                try:
+                    await page.goto(course_url, wait_until="domcontentloaded", timeout=30000)
+                except TimeoutError:
+                    logger.warn("播放页加载较慢，继续等待目录渲染...", shift=True)
+                await page.wait_for_timeout(2000)
                 if "login" in page.url:
                     logger.warn(
                         "播放页跳转到登录页, 当前登录状态已失效, 正在重新登录.",
@@ -289,8 +296,11 @@ async def main(config) -> bool:
                     remember_login_cookies(None)
                     await ensure_login(context, page, None, config, modules)
                     logger.info("重新进入播放页...")
-                    await page.goto(course_url, wait_until="commit")
-                    await page.wait_for_timeout(1500)
+                    try:
+                        await page.goto(course_url, wait_until="domcontentloaded", timeout=30000)
+                    except TimeoutError:
+                        logger.warn("播放页加载较慢，继续等待目录渲染...", shift=True)
+                    await page.wait_for_timeout(2000)
 
                 catalog = await detect_catalog_after_verification(page, page.url)
                 logger.info(f"检测到 {catalog.name} 课程目录.")
