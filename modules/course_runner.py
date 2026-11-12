@@ -1,7 +1,7 @@
 import time
 from enum import Enum
 
-from playwright.async_api import Page
+from playwright.async_api import Page, TimeoutError
 
 from modules.course_playback import elapsed_minutes, learn_lesson, review_lesson
 from modules.lesson_navigation import (
@@ -20,6 +20,7 @@ LESSON_CLICK_TIMEOUT_MS = 10_000
 
 # 目录节点在 detect_catalog 里刚确认过存在, 这里只做一次快速复核。
 CATALOG_ATTACH_TIMEOUT_MS = 5_000
+CATALOG_READY_TIMEOUT_MS = 20_000
 
 
 class CourseOutcome(Enum):
@@ -57,6 +58,16 @@ async def run_course(
     await page.wait_for_selector(
         catalog.item, state="attached", timeout=CATALOG_ATTACH_TIMEOUT_MS
     )
+    if catalog.name == "legacy":
+        # 旧版目录会先渲染视频列表, 再恢复当前课时与已学进度。
+        # 列表存在不代表数据就绪, 过早筛选会把已学课时当成待学并连续切换。
+        try:
+            await page.wait_for_selector(
+                catalog.active, state="attached", timeout=CATALOG_READY_TIMEOUT_MS
+            )
+        except TimeoutError:
+            logger.warn("目录尚未恢复当前课时,本轮停止切课.")
+            return CourseOutcome.FAILED
     # 融合共享课: 默认折叠的目录需先展开, 否则 get_filtered_class 采不全课时。
     if catalog.name == "fusion":
         await FusionAdapter.expand_catalog(page)
@@ -84,6 +95,10 @@ async def run_course(
     for index, lesson in enumerate(lessons):
         position = f"{index + 1}/{len(lessons)}"
         playback_enabled.clear()
+        # 进度也可能在筛选后更新; 已完成课时无需再点击, 避免快速切课。
+        if learning and await lesson_progress(lesson, catalog) >= 100:
+            logger.event("跳过已完成课时", 序号=position)
+            continue
         await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
         active = await wait_for_lesson_active(lesson, catalog)
         if not active:
