@@ -30,6 +30,8 @@ class Config:
             self.showDonateCode = self.get_bool_field("script-option", "showDonateCode")
             # 课程选项
             self.soundOff = self.get_bool_field('course-option', 'soundOff')
+            # AI 智慧课: 视频刷完后是否继续把知识点掌握度刷满
+            self.enableMastery = self.get_bool_field('course-option', 'enableMastery', fallback=True)
             self.course_match_rule = re.compile("https://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]")
             self.course_urls = self.get_course_urls()
         # 登录
@@ -126,3 +128,11 @@ class Config:
         self._read_config()
         speed = self._safe_get_float('course-option', 'limitSpeed', 1.0)
         return min(max(speed, 0.5), 1.8)
+
+    @property
+    def masteryTarget(self) -> float:
+        self._read_config()
+        target = self._safe_get_float('course-option', 'masteryTarget', 100.0)
+        if target <= 0:
+            return 100.0
+        return min(max(target, 1.0), 100.0)

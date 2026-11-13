@@ -154,6 +154,8 @@ async def video_optimize(page: Page, config: Config) -> None:
 async def play_video(
     page: Page, playback_enabled: asyncio.Event | None = None
 ) -> None:
+    from modules.ai_smart import is_ai_segment_finished, is_ai_smart_url
+
     await page.wait_for_load_state("domcontentloaded")
     while True:
         try:
@@ -172,6 +174,8 @@ async def play_video(
                 )
                 if paused is False:
                     await run_on(page, "video", "(el) => el.pause()", "暂停视频")
+                continue
+            if is_ai_smart_url(page.url) and await is_ai_segment_finished(page):
                 continue
             state = await run_on(
                 page,
