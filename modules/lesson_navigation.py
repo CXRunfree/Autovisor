@@ -32,15 +32,17 @@ WISDOM_CATALOG = CatalogSelectors(
 
 FUSION_CATALOG = CatalogSelectors(
     name="fusion",
-    # 真实融合课小节的容器是 .chapter-item(完整课时列表, 含 finish-icon);
-    # .chapter-content-second 只是"当前展开层级的子节点"(真站实测仅 4/58),
-    # 用它会漏采大部分课时, 故校准为 .chapter-item。
-    item=".chapter-item",
-    active=".chapter-content-second.current",
+    # .chapter-item 既可能是独立视频，也可能包含多个子视频。
+    # 只枚举叶子课时，避免把任一子视频的完成标记当成整组已完成。
+    item=(
+        ".chapter-item:not(:has(.chapter-content-second)), "
+        ".chapter-content-second:not(:has(.chapter-content-second))"
+    ),
+    active=".chapter-item.current, .chapter-content-second.current",
     finish=".finish-icon",
     title=".item-name",
     active_class="current",
-    # 融合课每课时带一个圆形进度环 .el-progress(在 item 内部),
+    # 融合课未完成的视频课时可能带圆形进度环 .el-progress,
     # aria-valuenow 给出真实已学百分比(缓增, 而非只到 0/100)。
     # 补上后 lesson_progress 能读到中间值, 支撑"播完未到100->回退重播"上报。
     progress=".el-progress",
